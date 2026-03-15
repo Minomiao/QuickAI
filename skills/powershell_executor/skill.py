@@ -101,7 +101,7 @@ def run_script(script: str) -> Dict[str, Any]:
         
         if confirm != 'y':
             if log:
-                log.info(f"用户取消运行脚本: {script[:100]}...")
+                log.info(f"用户取消运行脚本: {script}")
             return {
                 "success": False,
                 "error": "用户取消操作",
@@ -110,7 +110,7 @@ def run_script(script: str) -> Dict[str, Any]:
         
         # 用户确认后，直接执行脚本
         if log:
-            log.info(f"用户确认运行脚本，开始执行: {script[:100]}...")
+            log.info(f"用户确认运行脚本，开始执行: {script}")
         print("  正在执行脚本...")
         return _execute_script(script, script_length)
     
@@ -134,7 +134,7 @@ def _execute_script(script: str, script_length: int) -> Dict[str, Any]:
             work_path.mkdir(parents=True, exist_ok=True)
         
         if log:
-            log.info(f"在工作目录 '{work_dir}' 下执行脚本: {script[:100]}...")
+            log.info(f"在工作目录 '{work_dir}' 下执行脚本: {script}")
         
         try:
             result = subprocess.run(
@@ -154,7 +154,7 @@ def _execute_script(script: str, script_length: int) -> Dict[str, Any]:
             if log:
                 log.info(f"脚本执行完成 - 返回码: {result.returncode}, stdout长度: {len(stdout)}, stderr长度: {len(stderr)}")
                 if stderr:
-                    log.warning(f"脚本执行有错误输出: {stderr[:200]}...")
+                    log.warning(f"脚本执行有错误输出: {stderr}")
             
             if len(stdout) > MAX_OUTPUT_LENGTH:
                 stdout = stdout[:MAX_OUTPUT_LENGTH] + f"\n... (输出已截断，共 {len(result.stdout)} 字符)"
@@ -175,7 +175,7 @@ def _execute_script(script: str, script_length: int) -> Dict[str, Any]:
         
         except subprocess.TimeoutExpired:
             if log:
-                log.error(f"脚本执行超时（{TIMEOUT} 秒）: {script[:100]}...")
+                log.error(f"脚本执行超时（{TIMEOUT} 秒）: {script}")
             return {
                 "success": False,
                 "error": f"脚本执行超时（{TIMEOUT} 秒）",
@@ -185,7 +185,7 @@ def _execute_script(script: str, script_length: int) -> Dict[str, Any]:
         
         except Exception as e:
             if log:
-                log.error(f"脚本执行失败: {str(e)}, 脚本: {script[:100]}...")
+                log.error(f"脚本执行失败: {str(e)}, 脚本: {script}")
             return {
                 "error": f"脚本执行失败: {str(e)}",
                 "message": "脚本执行失败"

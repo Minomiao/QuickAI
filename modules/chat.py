@@ -9,6 +9,49 @@ import asyncio
 
 log = logger.get_logger("QuickAI.chat")
 
+def format_tool_result(result_str):
+    """格式化工具返回结果，使其更易读"""
+    try:
+        result = json.loads(result_str)
+        formatted_lines = []
+        
+        def format_value(key, value, indent=0):
+            prefix = "  " * indent
+            if isinstance(value, dict):
+                formatted_lines.append(f"{prefix}{key}:")
+                for k, v in value.items():
+                    format_value(k, v, indent + 1)
+            elif isinstance(value, list):
+                formatted_lines.append(f"{prefix}{key}: [{len(value)} 项]")
+                for i, v in enumerate(value[:5]):
+                    format_value(f"[{i}]", v, indent + 1)
+                if len(value) > 5:
+                    formatted_lines.append(f"{prefix}  ... 还有 {len(value) - 5} 项")
+            elif isinstance(value, str):
+                if '\n' in value:
+                    lines = value.strip().split('\n')
+                    formatted_lines.append(f"{prefix}{key}:")
+                    for line in lines[:10]:
+                        formatted_lines.append(f"{prefix}  {line}")
+                    if len(lines) > 10:
+                        formatted_lines.append(f"{prefix}  ... 还有 {len(lines) - 10} 行")
+                else:
+                    display = value[:100] + "..." if len(value) > 100 else value
+                    formatted_lines.append(f"{prefix}{key}: {display}")
+            elif isinstance(value, bool):
+                formatted_lines.append(f"{prefix}{key}: {'是' if value else '否'}")
+            elif value is None:
+                formatted_lines.append(f"{prefix}{key}: (空)")
+            else:
+                formatted_lines.append(f"{prefix}{key}: {value}")
+        
+        for key, value in result.items():
+            format_value(key, value)
+        
+        return '\n'.join(formatted_lines)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
 class QuickAIChat:
     def __init__(self, model="deepseek-chat", temperature=0.7, max_tokens=4096, enable_tools=True):
         self.model = model
@@ -159,6 +202,9 @@ class QuickAIChat:
                 })
                 
                 print(f"  结果: {result}")
+                formatted = format_tool_result(result)
+                if formatted:
+                    print(f"\n  格式化结果:\n{formatted}")
             
             self.messages.extend(tool_responses)
             
@@ -263,27 +309,29 @@ class QuickAIChat:
                 try:
                     result_dict = json.loads(result)
                     
-                    # 处理需要确认的操作（文件操作等，不包括 powershell_executor）
-                    if result_dict.get("requires_confirmation") and tool_name != "skill_powershell_executor_run_script":
-                        print(f"\n⚠️  需要确认:")
-                        print(f"  操作: {result_dict.get('action', 'unknown')}")
-                        print(f"  文件: {result_dict.get('file_path', 'unknown')}")
-                        print(f"  工作目录: {result_dict.get('work_directory', 'unknown')}")
-                        print(f"  原因: {result_dict.get('error', 'unknown')}")
-                        
-                        confirm = input("\n是否确认此操作? (y/n): ").lower()
-                        if confirm != 'y':
-                            tool_responses.append({
-                                "tool_call_id": tc['id'],
-                                "role": "tool",
-                                "content": json.dumps({"error": "用户取消操作"}, ensure_ascii=False)
-                            })
-                            log.info(f"用户取消操作: {tool_name}")
-                            print("操作已取消")
-                            continue
-                        else:
-                            log.info(f"用户确认操作: {tool_name}")
-                            print("操作已确认")
+                    # 处理需要确认的操作（检查 skill 是否有自己的确认机制）
+                    if result_dict.get("requires_confirmation"):
+                        # 检查 skill 是否已经处理了确认（通过检查是否有 confirmed 字段）
+                        if not result_dict.get("confirmed"):
+                            print(f"\n⚠️  需要确认:")
+                            print(f"  操作: {result_dict.get('action', 'unknown')}")
+                            print(f"  文件: {result_dict.get('file_path', 'unknown')}")
+                            print(f"  工作目录: {result_dict.get('work_directory', 'unknown')}")
+                            print(f"  原因: {result_dict.get('error', 'unknown')}")
+                            
+                            confirm = input("\n是否确认此操作? (y/n): ").lower()
+                            if confirm != 'y':
+                                tool_responses.append({
+                                    "tool_call_id": tc['id'],
+                                    "role": "tool",
+                                    "content": json.dumps({"error": "用户取消操作"}, ensure_ascii=False)
+                                })
+                                log.info(f"用户取消操作: {tool_name}")
+                                print("操作已取消")
+                                continue
+                            else:
+                                log.info(f"用户确认操作: {tool_name}")
+                                print("操作已确认")
                 except:
                     pass
                 
@@ -294,6 +342,9 @@ class QuickAIChat:
                 })
                 
                 print(f"  结果: {result}")
+                formatted = format_tool_result(result)
+                if formatted:
+                    print(f"\n  格式化结果:\n{formatted}")
             
             self.messages.extend(tool_responses)
             
@@ -410,6 +461,9 @@ class QuickAIChat:
                         })
                         
                         print(f"  结果: {result}")
+                        formatted = format_tool_result(result)
+                        if formatted:
+                            print(f"\n  格式化结果:\n{formatted}")
                     
                     self.messages.extend(tool_responses)
                     continue

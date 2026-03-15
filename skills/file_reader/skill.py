@@ -2,40 +2,21 @@ import os
 from typing import Dict, Any, List
 from pathlib import Path
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from modules import config
-
-def get_work_dir():
-    return config.load_config().get('work_directory', 'workplace')
 
 CONFIRMATION_REQUIRED = False
-
 MAX_FILES_TO_READ = 1000
 MAX_FILE_SIZE = 10 * 1024 * 1024
 MAX_SEARCH_RESULTS = 500
 MAX_FILES_TO_SEARCH_IN_CONTENT = 100
 
 
-def set_work_directory(directory: str) -> Dict[str, Any]:
+def get_work_dir():
     try:
-        path = Path(directory)
-        if not path.exists():
-            return {"error": f"目录不存在: {directory}"}
-        if not path.is_dir():
-            return {"error": f"路径不是目录: {directory}"}
-        work_dir = str(path)
-        
-        current_config = config.load_config()
-        current_config['work_directory'] = work_dir
-        config.save_config(current_config)
-        
-        return {
-            "success": True,
-            "work_directory": work_dir,
-            "message": f"工作目录已设置为: {work_dir}"
-        }
-    except Exception as e:
-        return {"error": f"设置工作目录失败: {str(e)}"}
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        from modules import config
+        return config.load_config().get('work_directory', 'workplace')
+    except:
+        return 'workplace'
 
 
 def get_work_directory() -> str:
@@ -94,16 +75,6 @@ skill_info = {
                 "required": []
             }
         },
-        "set_work_directory": {
-            "description": "设置工作目录（所有文件操作将限制在此目录内）",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "directory": {"type": "string", "description": "工作目录路径"}
-                },
-                "required": ["directory"]
-            }
-        },
         "set_confirmation_required": {
             "description": "设置是否需要用户确认（启用后，操作工作目录外的文件需要确认）",
             "parameters": {
@@ -140,11 +111,13 @@ skill_info = {
             }
         },
         "read_file": {
-            "description": "读取文件内容。限制：最大文件大小10MB。",
+            "description": "读取文件内容。每次最多读取400行，支持分页读取。限制：最大文件大小10MB。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "file_path": {"type": "string", "description": "文件路径（相对于工作目录）"},
+                    "offset": {"type": "integer", "description": "起始行号（从0开始），默认为0"},
+                    "limit": {"type": "integer", "description": "读取行数，默认为400，最大为400"},
                     "encoding": {"type": "string", "description": "文件编码，默认为 'utf-8'"}
                 },
                 "required": ["file_path"]
@@ -167,21 +140,22 @@ def search_files(pattern: str, directory: str = ".", search_in_content: bool = F
         if not path_check["allowed"]:
             if CONFIRMATION_REQUIRED:
                 return {
-                    "error": path_check["message"],
-                    "requires_confirmation": True,
-                    "action": "search_files",
-                    "directory": directory,
-                    "work_directory": path_check["work_directory"]
-                }
-            return {"error": path_check["message"]}
+                "error": path_check["message"],
+                "requires_confirmation": True,
+                "action": "search_files",
+                "directory": directory,
+                "work_directory": path_check["work_directory"],
+                "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的路径后再进行操作"
+            }
+            return {"error": path_check["message"], "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的路径后再进行操作"}
         
         search_path = Path(get_work_dir()) / directory
         
         if not search_path.exists():
-            return {"error": f"目录不存在: {directory}"}
+            return {"error": f"目录不存在: {directory}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的目录路径后再进行操作"}
         
         if not search_path.is_dir():
-            return {"error": f"路径不是目录: {directory}"}
+            return {"error": f"路径不是目录: {directory}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的目录路径后再进行操作"}
         
         results = []
         files_searched = 0
@@ -256,7 +230,7 @@ def search_files(pattern: str, directory: str = ".", search_in_content: bool = F
         }
     
     except Exception as e:
-        return {"error": f"搜索文件失败: {str(e)}"}
+        return {"error": f"搜索文件失败: {str(e)}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的文件信息后再进行操作"}
 
 
 def list_directory(directory: str = ".", max_depth: int = 10, show_hidden: bool = False) -> Dict[str, Any]:
@@ -265,21 +239,22 @@ def list_directory(directory: str = ".", max_depth: int = 10, show_hidden: bool 
         if not path_check["allowed"]:
             if CONFIRMATION_REQUIRED:
                 return {
-                    "error": path_check["message"],
-                    "requires_confirmation": True,
-                    "action": "list_directory",
-                    "directory": directory,
-                    "work_directory": path_check["work_directory"]
-                }
-            return {"error": path_check["message"]}
+                "error": path_check["message"],
+                "requires_confirmation": True,
+                "action": "list_directory",
+                "directory": directory,
+                "work_directory": path_check["work_directory"],
+                "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的路径后再进行操作"
+            }
+            return {"error": path_check["message"], "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的路径后再进行操作"}
         
         list_path = Path(get_work_dir()) / directory
         
         if not list_path.exists():
-            return {"error": f"目录不存在: {directory}"}
+            return {"error": f"目录不存在: {directory}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的目录路径后再进行操作"}
         
         if not list_path.is_dir():
-            return {"error": f"路径不是目录: {directory}"}
+            return {"error": f"路径不是目录: {directory}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的目录路径后再进行操作"}
         
         file_count = 0
         
@@ -328,30 +303,31 @@ def list_directory(directory: str = ".", max_depth: int = 10, show_hidden: bool 
         }
     
     except Exception as e:
-        return {"error": f"列出目录失败: {str(e)}"}
+        return {"error": f"列出目录失败: {str(e)}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的文件信息后再进行操作"}
 
 
-def read_file(file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
+def read_file(file_path: str, offset: int = 0, limit: int = 400, encoding: str = "utf-8") -> Dict[str, Any]:
     try:
         path_check = _is_path_allowed(file_path)
         if not path_check["allowed"]:
             if CONFIRMATION_REQUIRED:
                 return {
-                    "error": path_check["message"],
-                    "requires_confirmation": True,
-                    "action": "read_file",
-                    "file_path": file_path,
-                    "work_directory": path_check["work_directory"]
-                }
-            return {"error": path_check["message"]}
+                "error": path_check["message"],
+                "requires_confirmation": True,
+                "action": "read_file",
+                "file_path": file_path,
+                "work_directory": path_check["work_directory"],
+                "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的路径后再进行操作"
+            }
+            return {"error": path_check["message"], "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的路径后再进行操作"}
         
         path = Path(get_work_dir()) / file_path
         
         if not path.exists():
-            return {"error": f"文件不存在: {file_path}"}
+            return {"error": f"文件不存在: {file_path}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的文件路径后再进行操作"}
         
         if not path.is_file():
-            return {"error": f"路径不是文件: {file_path}"}
+            return {"error": f"路径不是文件: {file_path}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的文件路径后再进行操作"}
         
         file_size = path.stat().st_size
         
@@ -359,20 +335,57 @@ def read_file(file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
             return {
                 "error": f"文件过大: {file_path} (大小: {file_size} 字节，最大允许: {MAX_FILE_SIZE} 字节)",
                 "file_size": file_size,
-                "max_size": MAX_FILE_SIZE
+                "max_size": MAX_FILE_SIZE,
+                "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的文件信息后再进行操作"
             }
         
         with open(path, 'r', encoding=encoding, errors='ignore') as f:
-            content = f.read()
+            all_lines = f.readlines()
+        
+        total_lines = len(all_lines)
+        
+        if offset >= total_lines:
+            return {
+                "success": True,
+                "file_path": str(path),
+                "encoding": encoding,
+                "content": "",
+                "lines": [],
+                "line_count": 0,
+                "total_lines": total_lines,
+                "offset": offset,
+                "limit": limit,
+                "has_more": False,
+                "size": file_size,
+                "message": f"已到达文件末尾，文件共 {total_lines} 行"
+            }
+        
+        end_line = min(offset + limit, total_lines)
+        selected_lines = all_lines[offset:end_line]
+        
+        lines_with_numbers = []
+        for i, line in enumerate(selected_lines):
+            line_number = offset + i + 1
+            lines_with_numbers.append(f"{line_number}: {line.rstrip()}")
+        
+        content_with_numbers = "\n".join(lines_with_numbers)
         
         return {
             "success": True,
             "file_path": str(path),
             "encoding": encoding,
-            "content": content,
-            "line_count": len(content.splitlines()),
-            "size": file_size
+            "content": content_with_numbers,
+            "lines": lines_with_numbers,
+            "line_count": len(selected_lines),
+            "total_lines": total_lines,
+            "offset": offset,
+            "limit": limit,
+            "start_line": offset + 1,
+            "end_line": end_line,
+            "has_more": end_line < total_lines,
+            "size": file_size,
+            "message": f"读取第 {offset + 1}-{end_line} 行，共 {total_lines} 行"
         }
     
     except Exception as e:
-        return {"error": f"读取文件失败: {str(e)}"}
+        return {"error": f"读取文件失败: {str(e)}", "suggestion": "建议使用 read_file 函数重新阅读文件，获取正确的文件信息后再进行操作"}

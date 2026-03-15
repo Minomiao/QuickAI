@@ -3,6 +3,7 @@ from modules import config
 from modules import commands as cmd
 from modules import chat
 from modules import logger
+from modules import backup_manager
 import os
 
 log = logger.setup_logger("QuickAI")
@@ -108,6 +109,37 @@ def settings_mode():
     chat_instance = chat.QuickAIChat(model=current_config.get('model'))
     log.info("客户端已更新")
     print("客户端已更新")
+
+def handle_pending_changes():
+    pending_count = backup_manager.get_pending_changes_count()
+    if pending_count == 0:
+        return
+    
+    print(f"\n{'='*50}")
+    print(f"发现 {pending_count} 个待确认的文件更改")
+    print(backup_manager.show_pending_changes())
+    print(f"{'='*50}")
+    
+    while True:
+        choice = input("\n是否应用这些更改? (y=应用/n=撤销/s=跳过): ").lower().strip()
+        
+        if choice == 'y':
+            result = backup_manager.apply_all_changes()
+            print(f"\n{result['message']}")
+            for change in result.get('changes', []):
+                print(f"  - {change['file']}: {change['status']}")
+            break
+        elif choice == 'n':
+            result = backup_manager.revert_all_changes()
+            print(f"\n{result['message']}")
+            for change in result.get('changes', []):
+                print(f"  - {change['file']}: {change['status']}")
+            break
+        elif choice == 's':
+            print("跳过，更改将在下次对话时再次询问")
+            break
+        else:
+            print("请输入 y (应用) / n (撤销) / s (跳过)")
 
 def show_help():
     commands_config = cmd.load_commands()
@@ -255,9 +287,14 @@ if __name__ == "__main__":
     print("=" * 50)
     
     while True:
-        user_input = input("\n您: ")
+        user_input = input("\n您: ").strip()
+        
+        # 如果用户没有输入任何内容，直接继续等待新输入
+        if not user_input:
+            continue
         
         if user_input == cmd.get_command('quit'):
+            handle_pending_changes()
             log.info("用户退出程序")
             print("再见!")
             break
@@ -338,3 +375,6 @@ if __name__ == "__main__":
         
         log.info(f"用户输入: {user_input[:100]}{'...' if len(user_input) > 100 else ''}")
         chat_instance.chat_stream(user_input)
+        
+        # 每次对话结束后检查是否有待确认的文件更改
+        handle_pending_changes()
