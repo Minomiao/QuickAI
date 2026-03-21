@@ -183,10 +183,27 @@ class QuickAIChat:
             tool_responses = []
             for tc in tool_calls:
                 tool_name = tc.function.name
+                arguments_str = tc.function.arguments
+                
                 try:
-                    arguments = json.loads(tc.function.arguments)
-                except:
-                    arguments = {}
+                    arguments = json.loads(arguments_str)
+                except json.JSONDecodeError as e:
+                    log.error(f"JSON解析失败: {tool_name}, 错误: {str(e)}")
+                    log.error(f"原始参数: {arguments_str}")
+                    error_result = {
+                        "error": "工具调用参数解析失败",
+                        "tool_name": tool_name,
+                        "reason": "参数可能被截断或格式错误",
+                        "details": str(e),
+                        "suggestion": "请尝试重新表述您的需求，或者减少单次操作的复杂度"
+                    }
+                    tool_responses.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "content": json.dumps(error_result, ensure_ascii=False)
+                    })
+                    log.info(f"工具调用失败: {tool_name}")
+                    continue
                 
                 result = self._execute_tool_sync(tool_name, arguments)
                 
