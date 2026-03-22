@@ -507,6 +507,13 @@ class QuickAIChat:
                 else:
                     break
             
+            if iteration >= max_iterations:
+                log.warning(f"达到最大工具调用迭代次数: {max_iterations}")
+                print(f"\n⚠️  注意: 已达到最大工具调用迭代次数 ({max_iterations} 次)")
+                print("如果任务未完成，请继续对话以继续执行。")
+                if not full_response:
+                    full_response = f"已达到最大工具调用迭代次数 ({max_iterations} 次)。如果任务未完成，请继续对话以继续执行。"
+            
             if full_response or (not has_tool_calls and not reasoning_started):
                 print()
                 self.add_message("assistant", full_response)
