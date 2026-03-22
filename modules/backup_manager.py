@@ -4,6 +4,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import json
+from modules import logger
+
+log = logger.get_logger("Dolphin.backup_manager")
 
 BACKUP_DIR = "date/backup"
 
@@ -49,6 +52,7 @@ def backup_file(file_path: str, work_dir: str, action: str = "modify") -> Option
         
         # 对于创建操作，不需要备份
         if action == "create" or not full_path.exists():
+            log.debug(f"跳过备份: {file_path} (action={action}, exists={full_path.exists()})")
             return None
         
         # 生成备份文件名
@@ -56,6 +60,8 @@ def backup_file(file_path: str, work_dir: str, action: str = "modify") -> Option
         backup_name = f"{timestamp}.bak"
         backup_dir = get_file_backup_dir(file_path)
         backup_path = backup_dir / backup_name
+        
+        log.info(f"备份文件: {file_path} -> {backup_path}")
         
         # 复制文件到备份位置
         shutil.copy2(full_path, backup_path)
@@ -78,9 +84,10 @@ def backup_file(file_path: str, work_dir: str, action: str = "modify") -> Option
         # 保存备份信息
         save_file_backup_info(file_path, info)
         
+        log.debug(f"备份完成: {file_path}, action={action}")
         return str(backup_path)
     except Exception as e:
-        print(f"备份文件失败: {e}")
+        log.error(f"备份文件失败: {file_path}, 错误: {e}")
         return None
 
 def record_change(
@@ -89,6 +96,8 @@ def record_change(
     work_dir: str = ""
 ) -> Dict[str, Any]:
     """记录文件更改"""
+    log.debug(f"记录更改: {file_path}, action={action}")
+    
     # 获取文件的备份信息
     info = get_file_backup_info(file_path)
     
@@ -103,6 +112,7 @@ def record_change(
         # 更新现有记录
         unconfirmed_backup["action"] = action
         unconfirmed_backup["timestamp"] = datetime.now().isoformat()
+        log.debug(f"更新未确认的备份记录: {file_path}")
     else:
         # 创建新记录（对于创建操作）
         if action == "create":
@@ -114,6 +124,7 @@ def record_change(
                 "confirmed": False
             }
             info["backups"].append(backup_record)
+            log.debug(f"创建新的备份记录: {file_path}")
     
     # 更新工作目录
     if work_dir:
@@ -171,6 +182,7 @@ def get_pending_changes_list() -> List[Dict[str, Any]]:
 
 def apply_all_changes() -> Dict[str, Any]:
     """应用所有待确认的更改"""
+    log.info("开始应用所有待确认的更改")
     results = []
     applied_count = 0
     
@@ -191,12 +203,14 @@ def apply_all_changes() -> Dict[str, Any]:
                             "status": "applied"
                         })
                         applied_count += 1
+                        log.info(f"应用更改: {info['file_path']}, action={backup['action']}")
                 
                 # 保存更新后的信息
                 with open(info_path, 'w', encoding='utf-8') as f:
                     json.dump(info, f, ensure_ascii=False, indent=2)
                     
             except Exception as e:
+                log.error(f"应用更改失败: {info.get('file_path', 'unknown')}, 错误: {e}")
                 results.append({
                     "file": info.get("file_path", "unknown"),
                     "action": "unknown",
@@ -204,6 +218,7 @@ def apply_all_changes() -> Dict[str, Any]:
                     "error": str(e)
                 })
     
+    log.info(f"应用更改完成: {applied_count} 个")
     return {
         "success": True,
         "applied_count": applied_count,
@@ -213,6 +228,7 @@ def apply_all_changes() -> Dict[str, Any]:
 
 def revert_all_changes() -> Dict[str, Any]:
     """撤销所有待确认的更改"""
+    log.info("开始撤销所有待确认的更改")
     results = []
     reverted_count = 0
     
@@ -244,12 +260,14 @@ def revert_all_changes() -> Dict[str, Any]:
                                         "status": "reverted (deleted)"
                                     })
                                     reverted_count += 1
+                                    log.info(f"撤销创建: 删除文件 {file_path}")
                                 else:
                                     results.append({
                                         "file": file_path,
                                         "action": "create",
                                         "status": "file not found"
                                     })
+                                    log.warning(f"撤销创建失败: 文件不存在 {file_path}")
                             elif action in ["modify", "delete"]:
                                 # 修改或删除操作：从备份恢复
                                 if backup_file:
@@ -263,12 +281,14 @@ def revert_all_changes() -> Dict[str, Any]:
                                             "status": "reverted (restored from backup)"
                                         })
                                         reverted_count += 1
+                                        log.info(f"撤销{action}: 恢复文件 {file_path}")
                                     else:
                                         results.append({
                                             "file": file_path,
                                             "action": action,
                                             "status": "backup not found"
                                         })
+                                        log.warning(f"撤销{action}失败: 备份不存在 {file_path}")
                         except Exception as e:
                             results.append({
                                 "file": file_path,
@@ -276,6 +296,7 @@ def revert_all_changes() -> Dict[str, Any]:
                                 "status": "failed",
                                 "error": str(e)
                             })
+                            log.error(f"撤销更改失败: {file_path}, action={action}, 错误: {e}")
                 
                 # 移除已撤销的备份记录
                 info["backups"] = [b for b in info["backups"] if b.get("confirmed", False)]
@@ -285,6 +306,7 @@ def revert_all_changes() -> Dict[str, Any]:
                     json.dump(info, f, ensure_ascii=False, indent=2)
                     
             except Exception as e:
+                log.error(f"撤销更改失败: {info.get('file_path', 'unknown')}, 错误: {e}")
                 results.append({
                     "file": info.get("file_path", "unknown"),
                     "action": "unknown",
@@ -292,6 +314,7 @@ def revert_all_changes() -> Dict[str, Any]:
                     "error": str(e)
                 })
     
+    log.info(f"撤销更改完成: {reverted_count} 个")
     return {
         "success": True,
         "reverted_count": reverted_count,
