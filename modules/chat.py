@@ -385,7 +385,7 @@ class QuickAIChat:
             
             self.messages.extend(tool_responses)
             
-            max_iterations = 5
+            max_iterations = 10
             iteration = 0
             
             while iteration < max_iterations:
