@@ -42,4 +42,3 @@ dist_server/
 build.py
 build_pyinstaller.py
 build_webapi.py
-main_server.py
