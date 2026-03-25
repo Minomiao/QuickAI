@@ -357,14 +357,6 @@ if __name__ == "__main__":
                 chat_instance.save_conversation(save_name)
                 log.info(f"对话已保存: {save_name}")
                 print(f"对话已保存为: {save_name}")
-                if current_conversation == "main":
-                    chat_instance.clear_history()
-                    log.info("main对话已清空")
-                    print("main对话已清空")
-                else:
-                    current_conversation = "main"
-                    log.info("切换到main对话")
-                    print("已切换到main对话")
             continue
         elif user_input == cmd.get_command('list'):
             conversations = chat_instance.list_conversations()
