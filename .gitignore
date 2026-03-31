@@ -42,3 +42,7 @@ dist_server/
 build.py
 build_pyinstaller.py
 build_webapi.py
+build_main/
+
+# Documentation
+CHANGELOG.md

@@ -170,7 +170,7 @@ class SkillManager:
             if asyncio.iscoroutine(result):
                 result = await result
             
-            log.debug(f"技能工具执行结果: {str(result)[:200]}{'...' if len(str(result)) > 200 else ''}")
+            log.debug(f"技能工具执行结果: {result}")
             return result
         except Exception as e:
             log.error(f"技能工具执行失败: {tool_name}, 错误: {str(e)}")

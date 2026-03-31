@@ -105,7 +105,7 @@ class QuickAIChat:
                 result_str = json.dumps(result, ensure_ascii=False)
             else:
                 result_str = str(result)
-            log.debug(f"工具执行结果: {result_str[:200]}{'...' if len(result_str) > 200 else ''}")
+            log.debug(f"工具执行结果: {result_str}")
             return result_str
         except Exception as e:
             error_msg = json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -329,6 +329,9 @@ class QuickAIChat:
             print(full_response, end="", flush=True)
             print()
         
+        if not has_tool_calls:
+            self.add_message("assistant", full_response, reasoning_content=full_reasoning)
+        
         if has_tool_calls and tool_calls_buffer:
             tool_calls = list(tool_calls_buffer.values())
             log.info(f"检测到 {len(tool_calls)} 个工具调用")
@@ -531,13 +534,6 @@ class QuickAIChat:
                 print("如果任务未完成，请继续对话以继续执行。")
                 if not full_response:
                     full_response = f"已达到最大工具调用迭代次数 ({max_iterations} 次)。如果任务未完成，请继续对话以继续执行。"
-            
-            if full_response or (not has_tool_calls and not reasoning_started):
-                print()
-                self.add_message("assistant", full_response)
-            elif not full_response and has_tool_calls:
-                print()
-                self.add_message("assistant", "")
         
         log.info(f"流式聊天完成: 响应长度={len(full_response)}")
         return full_response

@@ -371,16 +371,15 @@ if __name__ == "__main__":
                                 print(f"工具响应: {msg.get('tool_call_id', 'unknown')}")
                                 if 'content' in msg:
                                     print(f"  内容: {msg['content']}")
-                        print("================")
                 else:
                     log.warning(f"对话不存在: {load_name}")
                     print(f"对话 '{load_name}' 不存在")
             continue
         elif user_input.startswith(cmd.get_command('save_as')):
             # 提取保存名称参数
-            parts = user_input.split(' ', 1)
-            if len(parts) > 1:
-                save_name = parts[1].strip()
+            save_as_command = cmd.get_command('save_as')
+            if len(user_input) > len(save_as_command):
+                save_name = user_input[len(save_as_command):].strip()
             else:
                 save_name = input("请输入保存名称: ")
             if save_name:
@@ -419,7 +418,7 @@ if __name__ == "__main__":
             manage_skills()
             continue
         
-        log.info(f"用户输入: {user_input[:100]}{'...' if len(user_input) > 100 else ''}")
+        log.info(f"用户输入: {user_input}")
         chat_instance.chat_stream(user_input)
         
         # 每次对话结束后检查是否有待确认的文件更改

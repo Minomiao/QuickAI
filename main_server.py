@@ -103,7 +103,7 @@ def chat_endpoint():
     if not user_input:
         return jsonify({'error': '消息不能为空'}), 400
     
-    log.info(f"收到消息: {user_input[:50]}...")
+    log.info(f"收到消息: {user_input}")
     
     def generate():
         if user_input == cmd.get_command('clear'):
@@ -223,7 +223,7 @@ def chat_endpoint():
                             full_response += content
                             response_started = True
                         if chunk_count <= 3:
-                            log.debug(f"发送 chunk {chunk_count}: {content[:20]}...")
+                            log.debug(f"发送 chunk {chunk_count}: {content}")
                         yield f"data: {json.dumps({'type': 'assistant', 'content': content}, ensure_ascii=False)}\n\n"
                     
                     if delta.tool_calls:

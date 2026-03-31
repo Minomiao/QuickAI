@@ -60,7 +60,7 @@ class MCPManager:
         
         session = self.sessions[server_name]
         result = await session.call_tool(actual_tool_name, arguments)
-        log.debug(f"MCP 工具执行结果: {str(result)[:200]}{'...' if len(str(result)) > 200 else ''}")
+        log.debug(f"MCP 工具执行结果: {result}")
         
         return result
     
