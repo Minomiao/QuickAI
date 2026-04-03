@@ -20,55 +20,55 @@ def load_commands():
     return {
         "commands": {
             "set": {
-                "input": ".set",
+                "input": "/set",
                 "description": "进入设置模式"
             },
             "back": {
-                "input": ".back",
+                "input": "/back",
                 "description": "返回 (在设置模式中使用)"
             },
             "help": {
-                "input": ".help",
+                "input": "/help",
                 "description": "显示此帮助信息"
             },
             "quit": {
-                "input": ".quit",
+                "input": "/quit",
                 "description": "退出程序"
             },
             "clear": {
-                "input": ".clear",
+                "input": "/clear",
                 "description": "清空对话历史"
             },
             "new": {
-                "input": ".new",
+                "input": "/new",
                 "description": "开启新对话"
             },
             "load": {
-                "input": ".load",
+                "input": "/load",       
                 "description": "加载旧对话"
             },
             "save_as": {
-                "input": ".save as",
+                "input": "/saveas",
                 "description": "保存对话"
             },
             "list": {
-                "input": ".list",
+                "input": "/list",
                 "description": "查看所有对话"
             },
             "tools": {
-                "input": ".tools",
+                "input": "/tools",
                 "description": "查看可用工具"
             },
             "skills": {
-                "input": ".skills",
+                "input": "/skills",
                 "description": "查看可用技能"
             },
             "toggle": {
-                "input": ".toggle",
+                "input": "/toggle",
                 "description": "切换工具启用/禁用状态"
             },
             "skill": {
-                "input": ".skill",
+                "input": "/skill",
                 "description": "管理技能启用/禁用状态"
             }
         }

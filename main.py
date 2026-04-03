@@ -311,8 +311,7 @@ if __name__ == "__main__":
         
         if user_input == cmd.get_command('quit'):
             handle_pending_changes()
-            log.info("用户退出程序")
-            print("再见!")
+            log.info("退出程序")
             break
         elif user_input == cmd.get_command('clear'):
             log.info("清空历史记录")
@@ -375,9 +374,9 @@ if __name__ == "__main__":
                     log.warning(f"对话不存在: {load_name}")
                     print(f"对话 '{load_name}' 不存在")
             continue
-        elif user_input.startswith(cmd.get_command('save_as')):
+        elif user_input.startswith(cmd.get_command('saveas')):
             # 提取保存名称参数
-            save_as_command = cmd.get_command('save_as')
+            save_as_command = cmd.get_command('saveas')
             if len(user_input) > len(save_as_command):
                 save_name = user_input[len(save_as_command):].strip()
             else:

@@ -23,21 +23,16 @@ def format_tool_result(result_str):
                     format_value(k, v, indent + 1)
             elif isinstance(value, list):
                 formatted_lines.append(f"{prefix}{key}: [{len(value)} 项]")
-                for i, v in enumerate(value[:5]):
+                for i, v in enumerate(value):
                     format_value(f"[{i}]", v, indent + 1)
-                if len(value) > 5:
-                    formatted_lines.append(f"{prefix}  ... 还有 {len(value) - 5} 项")
             elif isinstance(value, str):
                 if '\n' in value:
                     lines = value.strip().split('\n')
                     formatted_lines.append(f"{prefix}{key}:")
-                    for line in lines[:10]:
+                    for line in lines:
                         formatted_lines.append(f"{prefix}  {line}")
-                    if len(lines) > 10:
-                        formatted_lines.append(f"{prefix}  ... 还有 {len(lines) - 10} 行")
                 else:
-                    display = value[:100] + "..." if len(value) > 100 else value
-                    formatted_lines.append(f"{prefix}{key}: {display}")
+                    formatted_lines.append(f"{prefix}{key}: {value}")
             elif isinstance(value, bool):
                 formatted_lines.append(f"{prefix}{key}: {'是' if value else '否'}")
             elif value is None:
@@ -45,8 +40,12 @@ def format_tool_result(result_str):
             else:
                 formatted_lines.append(f"{prefix}{key}: {value}")
         
-        for key, value in result.items():
-            format_value(key, value)
+        if isinstance(result, dict):
+            for key, value in result.items():
+                format_value(key, value)
+        else:
+            # 处理非字典类型的返回值
+            formatted_lines.append(f"result: {result}")
         
         return '\n'.join(formatted_lines)
     except (json.JSONDecodeError, TypeError):
@@ -175,7 +174,7 @@ class QuickAIChat:
                 for tc in tool_calls
             ], reasoning_content=reasoning)
             
-            print("工具调用:")
+            print("--工具调用:")
             for tc in tool_calls:
                 print(f"  - {tc.function.name}")
                 print(f"    参数: {tc.function.arguments}")
@@ -337,10 +336,9 @@ class QuickAIChat:
             log.info(f"检测到 {len(tool_calls)} 个工具调用")
             self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
             
-            print("工具调用:")
+            print("--工具调用:")
             for tc in tool_calls:
                 print(f"  - {tc['function']['name']}")
-                print(f"    参数: {tc['function']['arguments']}")
             
             tool_responses = []
             for tc in tool_calls:
@@ -393,10 +391,11 @@ class QuickAIChat:
                     "content": result
                 })
                 
-                print(f"  结果: {result}")
                 formatted = format_tool_result(result)
                 if formatted:
-                    print(f"\n  格式化结果:\n{formatted}")
+                    print(f"--结果:\n{formatted}")
+                else:
+                    print(f"--结果: {result}")
             
             self.messages.extend(tool_responses)
             
@@ -466,10 +465,9 @@ class QuickAIChat:
                     log.info(f"迭代 {iteration}: 检测到 {len(tool_calls)} 个工具调用")
                     self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
                     
-                    print("工具调用:")
+                    print("--工具调用:")
                     for tc in tool_calls:
                         print(f"  - {tc['function']['name']}")
-                        print(f"    参数: {tc['function']['arguments']}")
                     
                     tool_responses = []
                     for tc in tool_calls:
@@ -518,10 +516,11 @@ class QuickAIChat:
                             "content": result
                         })
                         
-                        print(f"  结果: {result}")
                         formatted = format_tool_result(result)
                         if formatted:
-                            print(f"\n  格式化结果:\n{formatted}")
+                            print(f"--结果:\n{formatted}")
+                        else:
+                            print(f"--结果: {result}")
                     
                     self.messages.extend(tool_responses)
                     continue
