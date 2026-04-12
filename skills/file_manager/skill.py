@@ -36,12 +36,38 @@ def get_config():
 
 def set_work_directory(directory: str) -> Dict[str, Any]:
     try:
-        path = Path(directory)
-        if not path.exists():
-            return {"error": f"目录不存在: {directory}"}
-        if not path.is_dir():
-            return {"error": f"路径不是目录: {directory}"}
-        work_dir = str(path)
+        # 获取当前工作目录作为基础目录
+        base_work_dir = get_work_dir()
+        base_path = Path(base_work_dir).resolve()
+        
+        # 解析输入路径
+        input_path = Path(directory)
+        
+        # 默认解析为相对路径
+        if input_path.is_absolute():
+            # 如果是绝对路径，检查是否在基础目录下
+            resolved_path = input_path.resolve()
+            try:
+                # 检查是否是基础目录的子目录
+                resolved_path.relative_to(base_path)
+            except ValueError:
+                return {
+                    "error": f"路径必须是当前工作目录的子目录: {base_work_dir}",
+                    "suggestion": "请使用相对路径或确保路径在当前工作目录下"
+                }
+        else:
+            # 如果是相对路径，相对于基础目录解析
+            resolved_path = (base_path / input_path).resolve()
+        
+        # 检查目录是否存在
+        if not resolved_path.exists():
+            return {"error": f"目录不存在: {resolved_path}"}
+        if not resolved_path.is_dir():
+            return {"error": f"路径不是目录: {resolved_path}"}
+        
+        # 转换为相对路径存储
+        relative_path = str(resolved_path.relative_to(base_path))
+        work_dir = str(resolved_path)
         
         config = get_config()
         if config:
@@ -52,7 +78,9 @@ def set_work_directory(directory: str) -> Dict[str, Any]:
         return {
             "success": True,
             "work_directory": work_dir,
-            "message": f"工作目录已设置为: {work_dir}"
+            "relative_path": relative_path,
+            "message": f"工作目录已设置为: {work_dir}",
+            "format_hint": "建议使用相对路径格式，例如: 'subdir' 或 'subdir1/subdir2'"
         }
     except Exception as e:
         return {"error": f"设置工作目录失败: {str(e)}"}
@@ -115,11 +143,11 @@ skill_info = {
             }
         },
         "set_work_directory": {
-            "description": "设置工作目录（所有文件操作将限制在此目录内）",
+            "description": "设置工作目录（所有文件操作将限制在此目录内）。路径必须是当前工作目录的子目录，默认解析为相对路径。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "directory": {"type": "string", "description": "工作目录路径"}
+                    "directory": {"type": "string", "description": "工作目录路径（建议使用相对路径格式，例如: 'subdir' 或 'subdir1/subdir2'）"}
                 },
                 "required": ["directory"]
             }
