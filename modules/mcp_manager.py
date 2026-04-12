@@ -43,7 +43,6 @@ class MCPManager:
             return True
         except Exception as e:
             log.error(f"连接 MCP 服务器 {name} 失败: {e}")
-            print(f"连接 MCP 服务器 {name} 失败: {e}")
             return False
     
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:

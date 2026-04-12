@@ -53,7 +53,7 @@ def format_tool_result(result_str):
         return None
 
 class QuickAIChat:
-    def __init__(self, model="deepseek-chat", temperature=0.7, max_tokens=None, enable_tools=True):
+    def __init__(self, model="deepseek-chat", temperature=0.7, max_tokens=None, enable_tools=True, callback=None):
         self.model = model
         self.temperature = temperature
         
@@ -65,6 +65,7 @@ class QuickAIChat:
         self.max_tokens = max_tokens
         self.messages = []
         self.enable_tools = enable_tools
+        self.callback = callback or (lambda *args, **kwargs: None)
         self.client = OpenAI(
             api_key=config.load_config().get("api_key"),
             base_url=config.load_config().get("base_url", "https://api.deepseek.com")
@@ -96,6 +97,19 @@ class QuickAIChat:
             self.tools.extend(plugin_tools)
         log.debug(f"更新工具列表: 共 {len(self.tools)} 个工具")
     
+    async def _call_callback(self, event_type, data):
+        """调用回调函数，支持同步和异步回调"""
+        try:
+            if asyncio.iscoroutinefunction(self.callback):
+                result = await self.callback(event_type, data)
+                return result
+            else:
+                result = self.callback(event_type, data)
+                return result
+        except Exception as e:
+            log.error(f"回调函数执行失败: {e}")
+            return None
+    
     async def _execute_tool(self, tool_name: str, arguments: dict) -> str:
         log.info(f"执行工具: {tool_name}, 参数: {arguments}")
         try:
@@ -119,15 +133,10 @@ class QuickAIChat:
             log.error(f"工具执行失败: {tool_name}, 错误: {str(e)}")
             return error_msg
     
-    def _execute_tool_sync(self, tool_name: str, arguments: dict) -> str:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self._execute_tool(tool_name, arguments))
-        finally:
-            loop.close()
+    async def _execute_tool_sync(self, tool_name: str, arguments: dict) -> str:
+        return await self._execute_tool(tool_name, arguments)
     
-    def chat(self, user_input):
+    async def chat(self, user_input):
         log.info(f"开始聊天 (非流式): 输入长度={len(user_input)}")
         
         # 添加系统提示
@@ -164,13 +173,15 @@ class QuickAIChat:
         
         if reasoning:
             log.debug(f"思考过程长度: {len(reasoning)}")
-            print(f"思考过程:\n{reasoning}\n--- 思考过程结束 ---\n")
+            await self._call_callback('thinking', {
+                'content': reasoning
+            })
         
         tool_calls = assistant_message.tool_calls
         
         if tool_calls:
             log.info(f"检测到 {len(tool_calls)} 个工具调用")
-            self.add_message("assistant", assistant_message.content or "", [
+            tool_calls_list = [
                 {
                     "id": tc.id,
                     "type": tc.type,
@@ -180,12 +191,18 @@ class QuickAIChat:
                     }
                 }
                 for tc in tool_calls
-            ], reasoning_content=reasoning)
+            ]
+            self.add_message("assistant", assistant_message.content or "", tool_calls_list, reasoning_content=reasoning)
             
-            print("--工具调用:")
-            for tc in tool_calls:
-                print(f"  - {tc.function.name}")
-                print(f"    参数: {tc.function.arguments}")
+            await self._call_callback('tool_calls', {
+                'calls': [
+                    {
+                        'name': tc.function.name,
+                        'arguments': tc.function.arguments
+                    }
+                    for tc in tool_calls
+                ]
+            })
             
             tool_responses = []
             for tc in tool_calls:
@@ -212,29 +229,19 @@ class QuickAIChat:
                     log.info(f"工具调用失败: {tool_name}")
                     continue
                 
-                result = self._execute_tool_sync(tool_name, arguments)
+                result = await self._execute_tool_sync(tool_name, arguments)
                 
                 try:
                     result_dict = json.loads(result)
                     if result_dict.get("requires_confirmation"):
-                        print(f"\n⚠️  需要确认:")
-                        print(f"  操作: {result_dict.get('action', 'unknown')}")
-                        
-                        # 显示脚本预览（如果有）
-                        if result_dict.get('script_preview'):
-                            print(f"  脚本预览:")
-                            print(f"  {result_dict.get('script_preview')}")
-                        # 显示文件路径（如果有）
-                        if result_dict.get('file_path'):
-                            print(f"  文件: {result_dict.get('file_path')}")
-                        # 显示工作目录（如果有）
-                        if result_dict.get('work_directory'):
-                            print(f"  工作目录: {result_dict.get('work_directory')}")
-                        # 显示原因（如果有）
-                        if result_dict.get('error'):
-                            print(f"  原因: {result_dict.get('error')}")
-                        
-                        confirm = input("\n是否确认此操作? (y/n): ").lower()
+                        confirmation_data = {
+                            'action': result_dict.get('action', 'unknown'),
+                            'script_preview': result_dict.get('script_preview'),
+                            'file_path': result_dict.get('file_path'),
+                            'work_directory': result_dict.get('work_directory'),
+                            'error': result_dict.get('error')
+                        }
+                        confirm = await self._call_callback('confirmation_required', confirmation_data)
                         if confirm != 'y':
                             tool_responses.append({
                                 "tool_call_id": tc.id,
@@ -242,11 +249,11 @@ class QuickAIChat:
                                 "content": json.dumps({"error": "用户取消操作"}, ensure_ascii=False)
                             })
                             log.info(f"用户取消操作: {tool_name}")
-                            print("操作已取消")
+                            await self._call_callback('operation_canceled', {})
                             continue
                         else:
                             log.info(f"用户确认操作: {tool_name}")
-                            print("操作已确认，正在执行...")
+                            await self._call_callback('operation_confirmed', {})
                             # 直接执行脚本（如果是 PowerShell 脚本）
                             if result_dict.get('action') == 'run_powershell_script' and result_dict.get('script'):
                                 import subprocess
@@ -316,7 +323,7 @@ class QuickAIChat:
                                     arguments['confirmed'] = True
                                 else:
                                     arguments = {'confirmed': True}
-                                result = self._execute_tool_sync(tool_name, arguments)
+                                result = await self._execute_tool_sync(tool_name, arguments)
                 except:
                     pass
                 
@@ -326,10 +333,11 @@ class QuickAIChat:
                     "content": result
                 })
                 
-                print(f"  结果: {result}")
                 formatted = format_tool_result(result)
-                if formatted:
-                    print(f"\n  格式化结果:\n{formatted}")
+                await self._call_callback('tool_result', {
+                    'raw': result,
+                    'formatted': formatted
+                })
             
             self.messages.extend(tool_responses)
             
@@ -342,7 +350,7 @@ class QuickAIChat:
         self.add_message("assistant", final_content)
         return final_content
     
-    def chat_stream(self, user_input):
+    async def chat_stream(self, user_input):
         log.info(f"开始聊天 (流式): 输入长度={len(user_input)}")
         self.add_message("user", user_input)
         
@@ -374,10 +382,12 @@ class QuickAIChat:
                 reasoning = delta.model_extra.get('reasoning_content')
                 if reasoning:
                     if not reasoning_started:
-                        print("思考过程:")
+                        await self._call_callback('thinking_start', {})
                         reasoning_started = True
                     full_reasoning += reasoning
-                    print(reasoning, end="", flush=True)
+                    await self._call_callback('thinking_chunk', {
+                        'content': reasoning
+                    })
             
             if delta.content:
                 content = delta.content
@@ -405,11 +415,12 @@ class QuickAIChat:
         
         if reasoning_started:
             log.debug(f"思考过程长度: {len(full_reasoning)}")
-            print("\n--- 思考过程结束 ---\n")
+            await self._call_callback('thinking_end', {})
         
         if response_started:
-            print(full_response, end="", flush=True)
-            print()
+            await self._call_callback('response', {
+                'content': full_response
+            })
         
         if not has_tool_calls:
             self.add_message("assistant", full_response, reasoning_content=full_reasoning)
@@ -419,9 +430,15 @@ class QuickAIChat:
             log.info(f"检测到 {len(tool_calls)} 个工具调用")
             self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
             
-            print("--工具调用:")
-            for tc in tool_calls:
-                print(f"  - {tc['function']['name']}")
+            await self._call_callback('tool_calls', {
+                'calls': [
+                    {
+                        'name': tc['function']['name'],
+                        'arguments': tc['function']['arguments']
+                    }
+                    for tc in tool_calls
+                ]
+            })
             
             tool_responses = []
             for tc in tool_calls:
@@ -431,31 +448,21 @@ class QuickAIChat:
                 except:
                     arguments = {}
                 
-                result = self._execute_tool_sync(tool_name, arguments)
+                result = await self._execute_tool_sync(tool_name, arguments)
                 
                 try:
                     result_dict = json.loads(result)
                     
                     # 处理需要确认的操作
                     if result_dict.get("requires_confirmation"):
-                        print(f"\n⚠️  需要确认:")
-                        print(f"  操作: {result_dict.get('action', 'unknown')}")
-                        
-                        # 显示脚本预览（如果有）
-                        if result_dict.get('script_preview'):
-                            print(f"  脚本预览:")
-                            print(f"  {result_dict.get('script_preview')}")
-                        # 显示文件路径（如果有）
-                        if result_dict.get('file_path'):
-                            print(f"  文件: {result_dict.get('file_path')}")
-                        # 显示工作目录（如果有）
-                        if result_dict.get('work_directory'):
-                            print(f"  工作目录: {result_dict.get('work_directory')}")
-                        # 显示原因（如果有）
-                        if result_dict.get('error'):
-                            print(f"  原因: {result_dict.get('error')}")
-                        
-                        confirm = input("\n是否确认此操作? (y/n): ").lower()
+                        confirmation_data = {
+                            'action': result_dict.get('action', 'unknown'),
+                            'script_preview': result_dict.get('script_preview'),
+                            'file_path': result_dict.get('file_path'),
+                            'work_directory': result_dict.get('work_directory'),
+                            'error': result_dict.get('error')
+                        }
+                        confirm = await self._call_callback('confirmation_required', confirmation_data)
                         if confirm != 'y':
                             tool_responses.append({
                                 "tool_call_id": tc['id'],
@@ -463,11 +470,11 @@ class QuickAIChat:
                                 "content": json.dumps({"error": "用户取消操作"}, ensure_ascii=False)
                             })
                             log.info(f"用户取消操作: {tool_name}")
-                            print("操作已取消")
+                            await self._call_callback('operation_canceled', {})
                             continue
                         else:
                             log.info(f"用户确认操作: {tool_name}")
-                            print("操作已确认，正在执行...")
+                            await self._call_callback('operation_confirmed', {})
                             # 直接执行脚本（如果是 PowerShell 脚本）
                             if result_dict.get('action') == 'run_powershell_script' and result_dict.get('script'):
                                 import subprocess
@@ -537,7 +544,7 @@ class QuickAIChat:
                                     arguments['confirmed'] = True
                                 else:
                                     arguments = {'confirmed': True}
-                                result = self._execute_tool_sync(tool_name, arguments)
+                                result = await self._execute_tool_sync(tool_name, arguments)
                 except:
                     pass
                 
@@ -548,10 +555,10 @@ class QuickAIChat:
                 })
                 
                 formatted = format_tool_result(result)
-                if formatted:
-                    print(f"--结果:\n{formatted}")
-                else:
-                    print(f"--结果: {result}")
+                await self._call_callback('tool_result', {
+                    'raw': result,
+                    'formatted': formatted
+                })
             
             self.messages.extend(tool_responses)
             
@@ -580,10 +587,12 @@ class QuickAIChat:
                         reasoning = delta.model_extra.get('reasoning_content')
                         if reasoning:
                             if not reasoning_started:
-                                print("思考过程:")
+                                await self._call_callback('thinking_start', {})
                                 reasoning_started = True
                             full_reasoning += reasoning
-                            print(reasoning, end="", flush=True)
+                            await self._call_callback('thinking_chunk', {
+                                'content': reasoning
+                            })
                     
                     if delta.content:
                         content = delta.content
@@ -610,20 +619,27 @@ class QuickAIChat:
                                     tool_calls_buffer[tc.index]["function"]["arguments"] += tc.function.arguments
                 
                 if reasoning_started:
-                    print("\n--- 思考过程结束 ---\n")
+                    await self._call_callback('thinking_end', {})
                 
                 if response_started:
-                    print(full_response, end="", flush=True)
-                    print()
+                    await self._call_callback('response', {
+                        'content': full_response
+                    })
                 
                 if has_tool_calls and tool_calls_buffer:
                     tool_calls = list(tool_calls_buffer.values())
                     log.info(f"迭代 {iteration}: 检测到 {len(tool_calls)} 个工具调用")
                     self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
                     
-                    print("--工具调用:")
-                    for tc in tool_calls:
-                        print(f"  - {tc['function']['name']}")
+                    await self._call_callback('tool_calls', {
+                        'calls': [
+                            {
+                                'name': tc['function']['name'],
+                                'arguments': tc['function']['arguments']
+                            }
+                            for tc in tool_calls
+                        ]
+                    })
                     
                     tool_responses = []
                     for tc in tool_calls:
@@ -633,29 +649,19 @@ class QuickAIChat:
                         except:
                             arguments = {}
                         
-                        result = self._execute_tool_sync(tool_name, arguments)
+                        result = await self._execute_tool_sync(tool_name, arguments)
                         
                         try:
                             result_dict = json.loads(result)
                             if result_dict.get("requires_confirmation"):
-                                print(f"\n⚠️  需要确认:")
-                                print(f"  操作: {result_dict.get('action', 'unknown')}")
-                                
-                                # 显示脚本预览（如果有）
-                                if result_dict.get('script_preview'):
-                                    print(f"  脚本预览:")
-                                    print(f"  {result_dict.get('script_preview')}")
-                                # 显示文件路径（如果有）
-                                if result_dict.get('file_path'):
-                                    print(f"  文件: {result_dict.get('file_path')}")
-                                # 显示工作目录（如果有）
-                                if result_dict.get('work_directory'):
-                                    print(f"  工作目录: {result_dict.get('work_directory')}")
-                                # 显示原因（如果有）
-                                if result_dict.get('error'):
-                                    print(f"  原因: {result_dict.get('error')}")
-                                
-                                confirm = input("\n是否确认此操作? (y/n): ").lower()
+                                confirmation_data = {
+                                    'action': result_dict.get('action', 'unknown'),
+                                    'script_preview': result_dict.get('script_preview'),
+                                    'file_path': result_dict.get('file_path'),
+                                    'work_directory': result_dict.get('work_directory'),
+                                    'error': result_dict.get('error')
+                                }
+                                confirm = await self._call_callback('confirmation_required', confirmation_data)
                                 if confirm != 'y':
                                     tool_responses.append({
                                         "tool_call_id": tc['id'],
@@ -663,11 +669,11 @@ class QuickAIChat:
                                         "content": json.dumps({"error": "用户取消操作"}, ensure_ascii=False)
                                     })
                                     log.info(f"用户取消操作: {tool_name}")
-                                    print("操作已取消")
+                                    await self._call_callback('operation_canceled', {})
                                     continue
                                 else:
                                     log.info(f"用户确认操作: {tool_name}")
-                                    print("操作已确认，正在执行...")
+                                    await self._call_callback('operation_confirmed', {})
                                     # 直接执行脚本（如果是 PowerShell 脚本）
                                     if result_dict.get('action') == 'run_powershell_script' and result_dict.get('script'):
                                         import subprocess
@@ -737,7 +743,7 @@ class QuickAIChat:
                                             arguments['confirmed'] = True
                                         else:
                                             arguments = {'confirmed': True}
-                                        result = self._execute_tool_sync(tool_name, arguments)
+                                        result = await self._execute_tool_sync(tool_name, arguments)
                         except:
                             pass
                         
@@ -748,10 +754,10 @@ class QuickAIChat:
                         })
                         
                         formatted = format_tool_result(result)
-                        if formatted:
-                            print(f"--结果:\n{formatted}")
-                        else:
-                            print(f"--结果: {result}")
+                        await self._call_callback('tool_result', {
+                            'raw': result,
+                            'formatted': formatted
+                        })
                     
                     self.messages.extend(tool_responses)
                     continue
@@ -760,8 +766,9 @@ class QuickAIChat:
             
             if iteration >= max_iterations:
                 log.warning(f"达到最大工具调用迭代次数: {max_iterations}")
-                print(f"\n⚠️  注意: 已达到最大工具调用迭代次数 ({max_iterations} 次)")
-                print("如果任务未完成，请继续对话以继续执行。")
+                await self._call_callback('max_iterations_reached', {
+                    'iterations': max_iterations
+                })
                 if not full_response:
                     full_response = f"已达到最大工具调用迭代次数 ({max_iterations} 次)。如果任务未完成，请继续对话以继续执行。"
         

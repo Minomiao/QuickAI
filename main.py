@@ -122,7 +122,11 @@ def settings_mode():
         api_key=current_config.get("api_key"),
         base_url=current_config.get("base_url")
     )
-    chat_instance = chat.QuickAIChat(model=current_config.get('model'), max_tokens=current_config.get('max_tokens', 8192))
+    chat_instance = chat.QuickAIChat(
+        model=current_config.get('model'), 
+        max_tokens=current_config.get('max_tokens', 8192),
+        callback=chat_callback
+    )
     log.info("客户端已更新")
     print("客户端已更新")
 
@@ -294,23 +298,53 @@ def manage_skills():
     
     print("退出技能管理")
 
-if __name__ == "__main__":
-    current_config = config.load_config()
-    commands_config = cmd.load_commands()
-    
-    WORKPLACE_DIR = current_config.get('work_directory', 'workplace')
-    if not os.path.exists(WORKPLACE_DIR):
-        os.makedirs(WORKPLACE_DIR)
-        log.info(f"创建工作目录: {WORKPLACE_DIR}")
-    
-    chat_instance = chat.QuickAIChat(model=current_config.get('model', 'deepseek-chat'), max_tokens=current_config.get('max_tokens', 8192))
-    current_conversation = "main"
-    
-    log.info("Dolphin 启动")
-    log.info(f"当前配置: model={current_config.get('model')}, max_tokens={current_config.get('max_tokens', 8192)}, conversation={current_conversation}, work_directory={WORKPLACE_DIR}")
-    print("Dolphin 聊天助手")
-    print(f"输入 '{cmd.get_command('help')}' 获取命令帮助")
-    print("=" * 50)
+def chat_callback(event_type, data):
+    """处理聊天事件的回调函数"""
+    if event_type == 'thinking':
+        print(f"思考过程:\n{data['content']}\n--- 思考过程结束 ---\n")
+    elif event_type == 'thinking_start':
+        print("思考过程:")
+    elif event_type == 'thinking_chunk':
+        print(data['content'], end="", flush=True)
+    elif event_type == 'thinking_end':
+        print("\n--- 思考过程结束 ---")
+    elif event_type == 'response':
+        print(data['content'], end="", flush=True)
+        print()
+    elif event_type == 'tool_calls':
+        print("--工具调用:")
+        for call in data['calls']:
+            print(f"  - {call['name']}")
+            if call.get('arguments'):
+                print(f"    参数: {call['arguments']}")
+    elif event_type == 'tool_result':
+        if data['formatted']:
+            print(f"--结果:\n{data['formatted']}")
+        else:
+            print(f"--结果: {data['raw']}")
+    elif event_type == 'confirmation_required':
+        print(f"\n⚠️  需要确认:")
+        print(f"  操作: {data.get('action', 'unknown')}")
+        if data.get('script_preview'):
+            print(f"  脚本预览:")
+            print(f"  {data.get('script_preview')}")
+        if data.get('file_path'):
+            print(f"  文件: {data.get('file_path')}")
+        if data.get('work_directory'):
+            print(f"  工作目录: {data.get('work_directory')}")
+        if data.get('error'):
+            print(f"  原因: {data.get('error')}")
+        return input("\n是否确认此操作? (y/n): ").lower()
+    elif event_type == 'operation_canceled':
+        print("操作已取消")
+    elif event_type == 'operation_confirmed':
+        print("操作已确认，正在执行...")
+    elif event_type == 'max_iterations_reached':
+        print(f"\n⚠️  注意: 已达到最大工具调用迭代次数 ({data['iterations']} 次)")
+        print("如果任务未完成，请继续对话以继续执行。")
+
+async def main():
+    global current_config, commands_config, chat_instance, current_conversation
     
     while True:
         user_input = input("\n您: ").strip()
@@ -428,7 +462,34 @@ if __name__ == "__main__":
             continue
         
         log.info(f"用户输入: {user_input}")
-        chat_instance.chat_stream(user_input)
+        await chat_instance.chat_stream(user_input)
         
         # 每次对话结束后检查是否有待确认的文件更改
         handle_pending_changes()
+
+if __name__ == "__main__":
+    import asyncio
+    
+    current_config = config.load_config()
+    commands_config = cmd.load_commands()
+    
+    WORKPLACE_DIR = current_config.get('work_directory', 'workplace')
+    if not os.path.exists(WORKPLACE_DIR):
+        os.makedirs(WORKPLACE_DIR)
+        log.info(f"创建工作目录: {WORKPLACE_DIR}")
+    
+    chat_instance = chat.QuickAIChat(
+        model=current_config.get('model', 'deepseek-chat'), 
+        max_tokens=current_config.get('max_tokens', 8192),
+        callback=chat_callback
+    )
+    current_conversation = "main"
+    
+    log.info("Dolphin 启动")
+    log.info(f"当前配置: model={current_config.get('model')}, max_tokens={current_config.get('max_tokens', 8192)}, conversation={current_conversation}, work_directory={WORKPLACE_DIR}")
+    print("Dolphin 聊天助手")
+    print(f"输入 '{cmd.get_command('help')}' 获取命令帮助")
+    print("=" * 50)
+    
+    # 运行异步主函数
+    asyncio.run(main())
