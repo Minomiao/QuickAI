@@ -6,6 +6,12 @@ from modules import logger
 from modules import backup_manager
 import os
 
+# 导入 colorama 库
+from colorama import init, Fore, Back, Style
+
+# 初始化 colorama
+init()
+
 log = logger.setup_logger("Dolphin")
 
 def settings_mode():
@@ -301,27 +307,27 @@ def manage_skills():
 def chat_callback(event_type, data):
     """处理聊天事件的回调函数"""
     if event_type == 'thinking':
-        print(f"思考过程:\n{data['content']}\n--- 思考过程结束 ---\n")
+        print(f"思考过程:\n{Style.DIM}{data['content']}{Style.RESET_ALL}\n--- 思考过程结束 ---\n")
     elif event_type == 'thinking_start':
         print("思考过程:")
     elif event_type == 'thinking_chunk':
-        print(data['content'], end="", flush=True)
+        print(f"{Style.DIM}{data['content']}{Style.RESET_ALL}", end="", flush=True)
     elif event_type == 'thinking_end':
         print("\n--- 思考过程结束 ---")
     elif event_type == 'response':
         print(data['content'], end="", flush=True)
         print()
     elif event_type == 'tool_calls':
-        print("--工具调用:")
+        print(f"{Fore.BLUE}--工具调用:{Style.RESET_ALL}")
         for call in data['calls']:
-            print(f"  - {call['name']}")
+            print(f"{Fore.BLUE}  - {call['name']}{Style.RESET_ALL}")
             if call.get('arguments'):
-                print(f"    参数: {call['arguments']}")
+                print(f"{Fore.BLUE}    参数: {call['arguments']}{Style.RESET_ALL}")
     elif event_type == 'tool_result':
         if data['formatted']:
-            print(f"--结果:\n{data['formatted']}")
+            print(f"{Fore.GREEN}--结果:\n{data['formatted']}{Style.RESET_ALL}")
         else:
-            print(f"--结果: {data['raw']}")
+            print(f"{Fore.GREEN}--结果: {data['raw']}{Style.RESET_ALL}")
     elif event_type == 'confirmation_required':
         print(f"\n⚠️  需要确认:")
         print(f"  操作: {data.get('action', 'unknown')}")
