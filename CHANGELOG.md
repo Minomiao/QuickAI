@@ -20,6 +20,39 @@
 + Use + for additions, - for deletions, / for changes
 + Organize all requirements from previous context at the top of the change log in English
 
+## v0.1.4-alpha (2026-04-12)
+
++ Add async callback support for better web compatibility
+/ Restrict work directory to subdirectories only
++ Add colorama library for terminal output coloring
+/ Improve output readability with color coding
+/ Modify main program to use async main function
+
+**modules/chat.py**:
+  + Implement async callback mechanism
+  + Add _call_callback method to support both sync and async callbacks
+  + Modify chat and chat_stream methods to async
+  + Update tool execution to use async calls
+
+**skills/file_manager/skill.py**:
+  / Restrict work directory to subdirectories only
+  / Default to relative path resolution
+  + Add path format hints for AI
+  / Remove confirmation requirement for directory changes
+
+**main.py**:
+  + Add colorama library integration
+  + Implement async main function
+  / Add color coding for different output types
+  + Initialize colorama for cross-platform support
+
+**requirements.txt**:
+  + Add colorama>=0.4.6 dependency
+
+/ Improve terminal output readability with color coding
+/ Enhance web compatibility with async callbacks
+/ Strengthen security by restricting work directory scope
+
 ## v0.1.3-alpha (2026-04-06)
 
 + Add plugin skill loader functionality
