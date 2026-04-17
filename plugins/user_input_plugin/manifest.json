@@ -2,7 +2,7 @@
   "manifest_version": "1.0",
   "skill_info": {
     "name": "user_input",
-    "version": "1.0.0",
+    "version": "1.0.0-dev",
     "description": "向用户获取必要信息的插件，在不打断对话的前提下收集用户输入",
     "author": "Dolphin Team",
     "license": "MIT",
@@ -76,6 +76,6 @@
   "metadata": {
     "tags": ["user_input", "interaction", "utility"],
     "category": "utility",
-    "min_platform_version": "1.0.0"
+    "min_platform_version": "1.0.0-dev"
   }
 }

@@ -13,7 +13,6 @@ TIMEOUT = 30
 def get_work_dir():
     """获取工作目录"""
     try:
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         from modules import config
         return config.load_config().get('work_directory', 'workplace')
     except:
@@ -23,7 +22,6 @@ def get_work_dir():
 def get_logger():
     """获取日志记录器"""
     try:
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         from modules import logger
         return logger.get_logger("QuickAI.powershell_executor")
     except:
@@ -68,9 +66,18 @@ skill_info = {
 }
 
 
+def get_request_manager():
+    """获取请求管理器"""
+    try:
+        from modules import request_manager
+        return request_manager.get_request_manager()
+    except:
+        return None
+
 def run_script(script: str) -> Dict[str, Any]:
     """运行 PowerShell 脚本（自动处理用户确认和执行）"""
     log = get_logger()
+    rm = get_request_manager()
     
     try:
         script_length = len(script)
@@ -88,16 +95,28 @@ def run_script(script: str) -> Dict[str, Any]:
         if log:
             log.info(f"AI 请求运行 PowerShell 脚本 (长度: {script_length} 字符): {script}")
         
-        # 返回确认申请
+        # 使用请求管理器创建技能确认申请
         script_preview = script[:500] + "..." if len(script) > 500 else script
-        return {
-            "requires_confirmation": True,
-            "message": f"确认运行 PowerShell 脚本 (长度: {script_length} 字符):\n{script_preview}",
-            "action": "run_powershell_script",
-            "script": script,
-            "script_length": script_length,
-            "script_preview": script_preview
-        }
+        message = f"确认运行 PowerShell 脚本 (长度: {script_length} 字符):\n{script_preview}"
+        
+        if rm:
+            return rm.create_skill_confirmation(
+                message=message,
+                action="run_powershell_script",
+                script=script,
+                script_length=script_length,
+                script_preview=script_preview
+            )
+        else:
+            # 降级处理：直接返回确认申请
+            return {
+                "requires_confirmation": True,
+                "message": message,
+                "action": "run_powershell_script",
+                "script": script,
+                "script_length": script_length,
+                "script_preview": script_preview
+            }
     
     except Exception as e:
         if log:
