@@ -20,6 +20,52 @@
 + Use + for additions, - for deletions, / for changes
 + Organize all requirements from previous context at the top of the change log in English
 
+## v0.2.0-alpha (2026-04-22)
+
++ Implement request manager for skills and plugins
++ Add file operation module for centralized file operations
++ Implement prompt manager module for centralized system prompt management
++ Implement dialog-level backup management with single backup per file per conversation
+/ Update file reader and file operation to use consistent line numbering
+/ Improve work directory management: temporary switching, reset on new conversation, and clear subfolder usage instructions
++ Enhance request manager with console output support
+/ Update README with architecture documentation and command reference
+- Remove confirm_action function from user_input plugin
+- Remove package_plugin.py build script
+- Remove web-related files (main_server.py and Web-electron)
+- Remove unused quickai_chat.py and quickai_client.py files
+
+**modules/request_manager.py**:
+  + Create new module for managing skill and plugin requests
+  + Implement console output support
+  + Provide centralized request handling
+
+**modules/file_operation.py**:
+  + Create new module for centralized file operations
+  + Update skills to use request manager for file operations
+
+**modules/prompt_manager.py**:
+  + Create new module for centralized system prompt management
+
+**modules/backup_manager.py**:
+  + Implement dialog-level backup management
+  + Support single backup per file per conversation
+
+**skills/file_manager/skill.py**:
+  / Update to use consistent line numbering
+  / Improve work directory management
+
+**plugins/user_input_plugin/**:
+  - Remove confirm_action function
+
+**README.md**:
+  / Update with architecture documentation and command reference
+
+/ Improve system architecture with centralized management modules
+/ Enhance file operation consistency across skills
+/ Simplify codebase by removing unused files
+/ Improve work directory management and backup organization
+
 ## v0.1.4-alpha (2026-04-12)
 
 + Add async callback support for better web compatibility

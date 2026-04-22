@@ -14,10 +14,12 @@ Dolphin 采用模块化设计，核心组件包括：
 | `skill_manager.py` | 管理内置技能系统，加载和调用技能 |
 | `plugin_skill_loader.py` | 插件加载器，从 ZIP 文件加载插件技能 |
 | `request_manager.py` | **申请中转中心**，统一处理技能/插件与主程序的用户交互请求 |
+| `file_operation.py` | 文件操作模块，提供集中化的文件读写操作 |
+| `prompt_manager.py` | 提示管理器，集中管理系统提示和模板 |
 | `config.py` | 配置管理，保存和加载用户配置 |
 | `commands.py` | 命令系统，管理命令行接口 |
 | `logger.py` | 日志系统 |
-| `backup_manager.py` | 文件备份管理 |
+| `backup_manager.py` | 文件备份管理，支持对话级备份 |
 | `conversation.py` | 对话历史管理 |
 | `mcp_manager.py` | MCP 协议管理器 |
 
