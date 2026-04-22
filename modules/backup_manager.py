@@ -10,6 +10,20 @@ log = logger.get_logger("Dolphin.backup_manager")
 
 BACKUP_DIR = "date/backup"
 
+# 对话级别的备份管理
+dialog_backups = {}
+current_dialog_id = None
+
+def set_current_dialog_id(dialog_id: str):
+    """设置当前对话ID"""
+    global current_dialog_id
+    current_dialog_id = dialog_id
+    log.info(f"当前对话ID已设置: {dialog_id}")
+
+def get_current_dialog_id() -> Optional[str]:
+    """获取当前对话ID"""
+    return current_dialog_id
+
 def get_file_backup_dir(file_path: str) -> Path:
     """获取文件的备份目录，每个文件对应一个文件夹"""
     # 将文件路径转换为安全的文件夹名
@@ -46,14 +60,22 @@ def save_file_backup_info(file_path: str, info: Dict[str, Any]):
         json.dump(info, f, ensure_ascii=False, indent=2)
 
 def backup_file(file_path: str, work_dir: str, action: str = "modify") -> Optional[str]:
-    """备份文件并记录信息"""
+    """备份文件并记录信息（对话级别备份）"""
     try:
+        global dialog_backups
+        dialog_id = get_current_dialog_id()
+        
         full_path = Path(work_dir) / file_path
         
         # 对于创建操作，不需要备份
         if action == "create" or not full_path.exists():
             log.debug(f"跳过备份: {file_path} (action={action}, exists={full_path.exists()})")
             return None
+        
+        # 检查是否已经为当前对话创建过备份
+        if dialog_id and file_path in dialog_backups:
+            log.debug(f"当前对话已存在备份: {file_path}")
+            return dialog_backups[file_path]
         
         # 生成备份文件名
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -66,23 +88,9 @@ def backup_file(file_path: str, work_dir: str, action: str = "modify") -> Option
         # 复制文件到备份位置
         shutil.copy2(full_path, backup_path)
         
-        # 获取并更新备份信息
-        info = get_file_backup_info(file_path)
-        info["file_path"] = file_path
-        info["work_dir"] = work_dir
-        
-        # 添加备份记录
-        backup_record = {
-            "timestamp": datetime.now().isoformat(),
-            "backup_file": backup_name,
-            "action": action,
-            "applied": False,
-            "confirmed": False
-        }
-        info["backups"].append(backup_record)
-        
-        # 保存备份信息
-        save_file_backup_info(file_path, info)
+        # 记录到对话备份
+        if dialog_id:
+            dialog_backups[file_path] = str(backup_path)
         
         log.debug(f"备份完成: {file_path}, action={action}")
         return str(backup_path)
@@ -95,13 +103,13 @@ def record_change(
     file_path: str,
     work_dir: str = ""
 ) -> Dict[str, Any]:
-    """记录文件更改"""
+    """记录文件更改（对话级别）"""
     log.debug(f"记录更改: {file_path}, action={action}")
     
     # 获取文件的备份信息
     info = get_file_backup_info(file_path)
     
-    # 查找是否有未确认的备份记录
+    # 检查是否有未确认的备份记录
     unconfirmed_backup = None
     for backup in info["backups"]:
         if not backup.get("confirmed", False):
@@ -114,17 +122,17 @@ def record_change(
         unconfirmed_backup["timestamp"] = datetime.now().isoformat()
         log.debug(f"更新未确认的备份记录: {file_path}")
     else:
-        # 创建新记录（对于创建操作）
-        if action == "create":
-            backup_record = {
-                "timestamp": datetime.now().isoformat(),
-                "backup_file": None,
-                "action": action,
-                "applied": False,
-                "confirmed": False
-            }
-            info["backups"].append(backup_record)
-            log.debug(f"创建新的备份记录: {file_path}")
+        # 创建新记录
+        backup_record = {
+            "timestamp": datetime.now().isoformat(),
+            "backup_file": dialog_backups.get(file_path),
+            "action": action,
+            "applied": False,
+            "confirmed": False,
+            "dialog_id": get_current_dialog_id()
+        }
+        info["backups"].append(backup_record)
+        log.debug(f"创建新的备份记录: {file_path}")
     
     # 更新工作目录
     if work_dir:
@@ -134,6 +142,12 @@ def record_change(
     save_file_backup_info(file_path, info)
     
     return info["backups"][-1]
+
+def end_dialog_backup():
+    """结束对话备份，清理对话级别的备份记录"""
+    global dialog_backups
+    dialog_backups.clear()
+    log.info("对话备份已结束，备份记录已清理")
 
 def get_all_file_backup_dirs() -> List[Path]:
     """获取所有文件的备份目录"""
@@ -218,6 +232,9 @@ def apply_all_changes() -> Dict[str, Any]:
                     "error": str(e)
                 })
     
+    # 清理对话备份
+    end_dialog_backup()
+    
     log.info(f"应用更改完成: {applied_count} 个")
     return {
         "success": True,
@@ -271,7 +288,7 @@ def revert_all_changes() -> Dict[str, Any]:
                             elif action in ["modify", "delete"]:
                                 # 修改或删除操作：从备份恢复
                                 if backup_file:
-                                    backup_path = backup_dir / backup_file
+                                    backup_path = Path(backup_file)
                                     if backup_path.exists():
                                         shutil.copy2(backup_path, full_path)
                                         backup_path.unlink()
@@ -314,6 +331,9 @@ def revert_all_changes() -> Dict[str, Any]:
                     "error": str(e)
                 })
     
+    # 清理对话备份
+    end_dialog_backup()
+    
     log.info(f"撤销更改完成: {reverted_count} 个")
     return {
         "success": True,
@@ -340,5 +360,49 @@ def show_pending_changes() -> str:
         lines.append(f"   时间: {change['timestamp']}")
         if change.get("backup_file"):
             lines.append(f"   备份: {change['backup_file']}")
+        if change.get("dialog_id"):
+            lines.append(f"   对话ID: {change['dialog_id']}")
     
     return "\n".join(lines)
+
+# 单例模式
+_backup_manager = None
+
+class BackupManager:
+    """备份管理器"""
+    
+    def __init__(self):
+        log.info("BackupManager 初始化完成")
+    
+    def backup_file(self, file_path: str, work_dir: str, action: str = "modify") -> Optional[str]:
+        return backup_file(file_path, work_dir, action)
+    
+    def record_change(self, action: str, file_path: str, work_dir: str = "") -> Dict[str, Any]:
+        return record_change(action, file_path, work_dir)
+    
+    def get_pending_changes_count(self) -> int:
+        return get_pending_changes_count()
+    
+    def get_pending_changes_list(self) -> List[Dict[str, Any]]:
+        return get_pending_changes_list()
+    
+    def apply_all_changes(self) -> Dict[str, Any]:
+        return apply_all_changes()
+    
+    def revert_all_changes(self) -> Dict[str, Any]:
+        return revert_all_changes()
+    
+    def show_pending_changes(self) -> str:
+        return show_pending_changes()
+    
+    def set_current_dialog_id(self, dialog_id: str):
+        set_current_dialog_id(dialog_id)
+    
+    def end_dialog_backup(self):
+        end_dialog_backup()
+
+def get_backup_manager() -> BackupManager:
+    global _backup_manager
+    if _backup_manager is None:
+        _backup_manager = BackupManager()
+    return _backup_manager

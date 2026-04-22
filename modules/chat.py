@@ -8,6 +8,7 @@ from modules import request_manager
 from modules import logger
 import json
 import asyncio
+import uuid
 
 log = logger.get_logger("Dolphin.chat")
 
@@ -75,6 +76,19 @@ class QuickAIChat:
         self.skill_mgr = skill_manager.get_skill_manager()
         self.plugin_loader = plugin_skill_loader.get_plugin_skill_loader()
         self.request_manager = request_manager.get_request_manager()
+        
+        # 导入备份管理器
+        from modules import backup_manager
+        self.backup_mgr = backup_manager.get_backup_manager()
+        
+        # 生成对话ID
+        self.dialog_id = str(uuid.uuid4())
+        log.info(f"生成对话ID: {self.dialog_id}")
+        
+        # 设置备份管理器的对话ID
+        if self.backup_mgr:
+            self.backup_mgr.set_current_dialog_id(self.dialog_id)
+        
         self.tools = []
         self._update_tools()
         
@@ -438,6 +452,12 @@ class QuickAIChat:
         final_content = assistant_message.content or ""
         log.info(f"聊天完成: 响应长度={len(final_content)}")
         self.add_message("assistant", final_content)
+        
+        # 结束对话备份
+        if self.backup_mgr:
+            self.backup_mgr.end_dialog_backup()
+            log.info("对话备份已结束")
+            
         return final_content
     
     async def chat_stream(self, user_input):
@@ -911,6 +931,11 @@ class QuickAIChat:
                 if not full_response:
                     full_response = f"已达到最大工具调用迭代次数 ({max_iterations} 次)。如果任务未完成，请继续对话以继续执行。"
         
+        # 结束对话备份
+        if self.backup_mgr:
+            self.backup_mgr.end_dialog_backup()
+            log.info("对话备份已结束")
+            
         log.info(f"流式聊天完成: 响应长度={len(full_response)}")
         return full_response
     
