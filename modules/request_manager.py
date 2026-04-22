@@ -10,12 +10,21 @@ class RequestType:
     CONFIRMATION = "confirmation_request"
     SKILL_CONFIRMATION = "skill_confirmation"
     CONSOLE_OUTPUT = "console_output"
+    PROMPT_REQUEST = "prompt_request"
 
 class RequestManager:
     """申请管理器"""
     def __init__(self):
         self.pending_requests = []
+        self._prompt_manager = None
         log.info("RequestManager 初始化完成")
+    
+    def _get_prompt_manager(self):
+        """延迟加载提示词管理器"""
+        if self._prompt_manager is None:
+            from modules import prompt_manager
+            self._prompt_manager = prompt_manager.get_prompt_manager()
+        return self._prompt_manager
     
     def create_user_input_request(self, prompt: str, input_type: str = "text", 
                                default_value: Optional[str] = None, 
@@ -68,6 +77,17 @@ class RequestManager:
         log.debug(f"创建控制台输出: {level}, 申请类型: {request_type}")
         return request
     
+    def create_prompt_request(self, prompt_key: str, **kwargs) -> Dict[str, Any]:
+        """创建提示词请求"""
+        request = {
+            "type": RequestType.PROMPT_REQUEST,
+            "prompt_key": prompt_key,
+            "kwargs": kwargs
+        }
+        self.pending_requests.append(request)
+        log.debug(f"创建提示词请求: {prompt_key}")
+        return request
+    
     def create_request_output(self, request: Dict[str, Any], content: str, level: str = "info") -> Dict[str, Any]:
         """创建与申请相关的控制台输出"""
         return self.create_console_output(
@@ -91,7 +111,8 @@ class RequestManager:
             return False
         
         # 检查是否为用户输入申请、确认申请或控制台输出
-        if data.get("type") in [RequestType.USER_INPUT, RequestType.CONFIRMATION, RequestType.CONSOLE_OUTPUT]:
+        if data.get("type") in [RequestType.USER_INPUT, RequestType.CONFIRMATION, 
+                               RequestType.CONSOLE_OUTPUT, RequestType.PROMPT_REQUEST]:
             return True
         
         # 检查是否为技能确认申请
@@ -116,6 +137,9 @@ class RequestManager:
         elif request_type == RequestType.CONSOLE_OUTPUT:
             # 处理控制台输出申请
             return self._handle_console_output(request, callback)
+        elif request_type == RequestType.PROMPT_REQUEST:
+            # 处理提示词请求
+            return self._handle_prompt_request(request)
         elif request.get("requires_confirmation"):
             # 处理技能确认申请
             return self._handle_skill_confirmation(request, callback)
@@ -179,6 +203,21 @@ class RequestManager:
         # 这里需要通过回调函数输出内容
         # 实际处理逻辑在主程序中
         return request
+    
+    def _handle_prompt_request(self, request: Dict[str, Any]) -> Any:
+        """处理提示词请求"""
+        try:
+            prompt_key = request.get('prompt_key')
+            kwargs = request.get('kwargs', {})
+            
+            prompt_manager = self._get_prompt_manager()
+            result = prompt_manager.handle_request(request)
+            
+            log.info(f"处理提示词请求: {prompt_key}, 成功: {result.get('success', False)}")
+            return result
+        except Exception as e:
+            log.error(f"处理提示词请求失败: {e}")
+            return {"error": str(e)}
 
 
 # 单例模式
