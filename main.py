@@ -21,7 +21,7 @@ def settings_mode():
     print(f"输入 '{cmd.get_command('back')}' 返回主界面")
     print("当前配置:")
     print(f"API密钥: {'***' if current_config.get('api_key') else '未设置'}")
-    print(f"模型: {current_config.get('model', 'deepseek-chat')}")
+    print(f"模型: {current_config.get('model', 'deepseek-v4-flash')}")
     print(f"工作目录: {current_config.get('work_directory', 'workplace')}")
     print(f"最大Token数: {current_config.get('max_tokens', 8192)}")
     print("\n输入新的配置 (留空保持当前值):")
@@ -34,36 +34,55 @@ def settings_mode():
     new_api_key = new_api_key or current_config.get('api_key')
     
     print("\n可用模型:")
-    print("1. deepseek-chat")
-    print("2. deepseek-coder")
-    print("3. deepseek-reasoner")
-    print("4. 自定义模型")
     
-    model_choice = input("\n请选择模型 (1-4): ")
+    from modules.config import get_available_models, MODEL_REGISTRY
+    available_models = get_available_models()
+    
+    new_models = [m for m in available_models if not m["deprecated"]]
+    deprecated_models = [m for m in available_models if m["deprecated"]]
+    
+    idx = 1
+    choice_map = {}
+    
+    for model_info in new_models:
+        print(f"{idx}. {model_info['name']} - {model_info['description']}")
+        choice_map[str(idx)] = model_info["name"]
+        idx += 1
+    
+    if deprecated_models:
+        deprecation_msg = config.check_model_deprecation(deprecated_models[0]["name"])
+        warning = ""
+        if deprecation_msg:
+            warning = f" ({deprecation_msg})"
+        print(f"\n--- 以下模型即将/已废弃{warning} ---")
+        for model_info in deprecated_models:
+            print(f"{idx}. {model_info['name']} - {model_info['description']}")
+            choice_map[str(idx)] = model_info["name"]
+            idx += 1
+    
+    print(f"{idx}. 自定义模型")
+    choice_map[str(idx)] = "__custom__"
+    
+    model_choice = input(f"\n请选择模型 (1-{idx}): ")
     if model_choice == cmd.get_command('back'):
         log.info("用户取消设置，返回主界面")
         print("返回主界面")
         return
     
-    model_map = {
-        "1": "deepseek-chat",
-        "2": "deepseek-coder",
-        "3": "deepseek-reasoner"
-    }
-    
-    if model_choice in model_map:
-        new_model = model_map[model_choice]
-    elif model_choice == "4":
-        new_model = input("请输入自定义模型名称: ")
-        if new_model == cmd.get_command('back'):
-            log.info("用户取消设置，返回主界面")
-            print("返回主界面")
-            return
-        new_model = new_model or current_config.get('model', 'deepseek-chat')
+    if model_choice in choice_map:
+        if choice_map[model_choice] == "__custom__":
+            new_model = input("请输入自定义模型名称: ")
+            if new_model == cmd.get_command('back'):
+                log.info("用户取消设置，返回主界面")
+                print("返回主界面")
+                return
+            new_model = new_model or current_config.get('model', 'deepseek-v4-flash')
+        else:
+            new_model = choice_map[model_choice]
     else:
         log.warning(f"无效的模型选择: {model_choice}")
         print("无效选择，保持当前模型")
-        new_model = current_config.get('model', 'deepseek-chat')
+        new_model = current_config.get('model', 'deepseek-v4-flash')
     
     print(f"\n当前工作目录: {current_config.get('work_directory', 'workplace')}")
     new_work_directory = input("输入新的工作目录 (留空保持当前值): ")
@@ -499,13 +518,18 @@ if __name__ == "__main__":
     current_config = config.load_config()
     commands_config = cmd.load_commands()
     
+    deprecation_warning = config.check_model_deprecation(current_config.get('model', 'deepseek-v4-flash'))
+    if deprecation_warning:
+        log.warning(deprecation_warning)
+        print(f"{Fore.YELLOW}警告: {deprecation_warning}{Style.RESET_ALL}")
+    
     WORKPLACE_DIR = current_config.get('work_directory', 'workplace')
     if not os.path.exists(WORKPLACE_DIR):
         os.makedirs(WORKPLACE_DIR)
         log.info(f"创建工作目录: {WORKPLACE_DIR}")
     
     chat_instance = chat.QuickAIChat(
-        model=current_config.get('model', 'deepseek-chat'), 
+        model=current_config.get('model', 'deepseek-v4-flash'), 
         max_tokens=current_config.get('max_tokens', 8192),
         callback=chat_callback
     )

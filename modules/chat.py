@@ -55,7 +55,7 @@ def format_tool_result(result_str):
         return None
 
 class QuickAIChat:
-    def __init__(self, model="deepseek-chat", temperature=0.7, max_tokens=None, enable_tools=True, callback=None):
+    def __init__(self, model="deepseek-v4-flash", temperature=0.7, max_tokens=None, enable_tools=True, callback=None):
         self.model = model
         self.temperature = temperature
         
