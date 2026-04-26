@@ -28,7 +28,7 @@ QUICKAI_BASE_URL=https://api.deepseek.com
 python main.py
 ```
 
-首次运行会自动创建 `workplace/` 工作目录和 `date/config.json` 配置文件。在设置模式（`/set`）中可配置 API 密钥、模型和工作目录等。
+首次运行会自动创建 `workplace/` 工作目录和 `date/config.json` 配置文件。在设置模式（`/set`）中可配置 API 密钥、模型等，工作目录可通过 `/open` 命令单独切换。
 
 ---
 
@@ -51,7 +51,8 @@ python main.py
 | 命令 | 说明 |
 |------|------|
 | `/help` | 显示帮助信息 |
-| `/set` | 进入设置模式（API 密钥、模型、工作目录等） |
+| `/set` | 进入设置模式（API 密钥、模型等） |
+| `/open [path]` | 打开/切换工作目录，不传路径时交互式输入 |
 | `/clear` | 清空对话历史并重置工作目录 |
 | `/new` | 创建新对话 |
 | `/load [name]` | 加载已保存的对话 |
@@ -73,7 +74,7 @@ Dolphin 有两层工作目录：
 
 | 层级 | 来源 | 说明 |
 |------|------|------|
-| 用户配置目录 | `config.json` → `work_directory` | 持久化，用户通过 `/set` 修改 |
+| 用户配置目录 | `config.json` → `work_directory` | 持久化，用户通过 `/open` 修改 |
 | AI 临时目录 | 内存变量 | AI 可切换至子目录，对话保持，`/clear` `/new` `/load` 时自动重置 |
 
 - AI 可通过 `set_work_directory` 切换到用户配置目录的**任意子目录**
@@ -90,7 +91,7 @@ Dolphin 有两层工作目录：
 
 ```
 用户输入 ──> main.py async main()
-              ├── /set /help /clear /new /load ... → 命令处理
+              ├── /set /open /help /clear /new /load ... → 命令处理
               └── 其他内容 → chat_instance.chat_stream(user_input)
 ```
 
@@ -408,7 +409,7 @@ def my_function(param1: str):
 }
 ```
 
-配置项可通过 `/set` 修改，无需手动编辑。
+配置项可通过 `/set` 和 `/open` 修改，无需手动编辑。
 
 ---
 

@@ -22,7 +22,6 @@ def settings_mode():
     print("当前配置:")
     print(f"API密钥: {'***' if current_config.get('api_key') else '未设置'}")
     print(f"模型: {current_config.get('model', 'deepseek-v4-flash')}")
-    print(f"工作目录: {current_config.get('work_directory', 'workplace')}")
     print(f"最大Token数: {current_config.get('max_tokens', 8192)}")
     print("\n输入新的配置 (留空保持当前值):")
     
@@ -84,14 +83,6 @@ def settings_mode():
         print("无效选择，保持当前模型")
         new_model = current_config.get('model', 'deepseek-v4-flash')
     
-    print(f"\n当前工作目录: {current_config.get('work_directory', 'workplace')}")
-    new_work_directory = input("输入新的工作目录 (留空保持当前值): ")
-    if new_work_directory == cmd.get_command('back'):
-        log.info("用户取消设置，返回主界面")
-        print("返回主界面")
-        return
-    new_work_directory = new_work_directory or current_config.get('work_directory', 'workplace')
-    
     print(f"\n当前最大Token数: {current_config.get('max_tokens', 8192)}")
     print("推荐值: 8192 (适合大多数场景)")
     new_max_tokens = input("输入新的最大Token数 (留空保持当前值): ")
@@ -123,24 +114,12 @@ def settings_mode():
     
     current_config['api_key'] = new_api_key
     current_config['model'] = new_model
-    current_config['work_directory'] = new_work_directory
     current_config['max_tokens'] = new_max_tokens
     
     config.save_config(current_config)
     cmd.save_commands(commands_config)
-    log.info(f"配置已保存: model={new_model}, work_directory={new_work_directory}, max_tokens={new_max_tokens}")
+    log.info(f"配置已保存: model={new_model}, max_tokens={new_max_tokens}")
     print("\n配置已保存")
-    
-    if new_work_directory != current_config.get('work_directory', 'workplace'):
-        print(f"工作目录已更改，正在重新加载技能模块...")
-        import importlib
-        import modules.skill_manager as sm
-        importlib.reload(sm)
-        global skill_mgr
-        skill_mgr = sm.get_skill_manager()
-        chat_instance.skill_mgr = skill_mgr
-        chat_instance._update_tools()
-        print("技能模块已重新加载")
     
     global client
     client = OpenAI(
@@ -228,6 +207,33 @@ def toggle_tools():
     status_text = "启用" if new_status else "禁用"
     log.info(f"工具状态已切换: {status_text}")
     print(f"工具已{status_text}")
+
+def open_work_directory(path=None):
+    global current_config, chat_instance, skill_mgr
+    if not path:
+        print(f"\n当前工作目录: {current_config.get('work_directory', 'workplace')}")
+        path = input("输入要打开的工作目录: ")
+        if not path:
+            print("取消操作")
+            return
+    
+    old_work_directory = current_config.get('work_directory', 'workplace')
+    current_config['work_directory'] = path
+    config.save_config(current_config)
+    log.info(f"工作目录已更改: {old_work_directory} -> {path}")
+    
+    if path != old_work_directory:
+        print(f"工作目录已更改，正在重新加载技能模块...")
+        import importlib
+        import modules.skill_manager as sm
+        importlib.reload(sm)
+        global skill_mgr
+        skill_mgr = sm.get_skill_manager()
+        chat_instance.skill_mgr = skill_mgr
+        chat_instance._update_tools()
+        print("技能模块已重新加载")
+    
+    print(f"工作目录已设置为: {path}")
 
 def manage_skills():
     from modules import config
@@ -409,6 +415,11 @@ async def main():
             continue
         elif user_input == cmd.get_command('set'):
             settings_mode()
+            continue
+        elif user_input.startswith(cmd.get_command('open')):
+            open_cmd = cmd.get_command('open')
+            parts = user_input[len(open_cmd):].strip()
+            open_work_directory(parts if parts else None)
             continue
         elif user_input == cmd.get_command('help'):
             show_help()

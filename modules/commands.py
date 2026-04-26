@@ -7,16 +7,7 @@ log = logger.get_logger("Dolphin.commands")
 DATE_DIR = "date"
 COMMANDS_FILE = os.path.join(DATE_DIR, "commands.json")
 
-def load_commands():
-    if os.path.exists(COMMANDS_FILE):
-        try:
-            with open(COMMANDS_FILE, 'r', encoding='utf-8') as f:
-                commands_data = json.load(f)
-                log.debug(f"加载命令文件: {COMMANDS_FILE}")
-                return commands_data
-        except Exception as e:
-            log.error(f"加载命令文件失败: {e}")
-    log.debug("使用默认命令配置")
+def _get_default_commands():
     return {
         "commands": {
             "set": {
@@ -44,7 +35,7 @@ def load_commands():
                 "description": "开启新对话"
             },
             "load": {
-                "input": "/load",       
+                "input": "/load",
                 "description": "加载旧对话"
             },
             "save_as": {
@@ -70,9 +61,25 @@ def load_commands():
             "skill": {
                 "input": "/skill",
                 "description": "管理技能启用/禁用状态"
+            },
+            "open": {
+                "input": "/open",
+                "description": "打开/切换工作目录"
             }
         }
     }
+
+def load_commands():
+    defaults = _get_default_commands()
+    if os.path.exists(COMMANDS_FILE):
+        try:
+            with open(COMMANDS_FILE, 'r', encoding='utf-8') as f:
+                file_commands = json.load(f)
+                log.debug(f"加载命令文件: {COMMANDS_FILE}")
+                defaults["commands"].update(file_commands.get("commands", {}))
+        except Exception as e:
+            log.error(f"加载命令文件失败: {e}")
+    return defaults
 
 def save_commands(commands):
     if not os.path.exists(DATE_DIR):
