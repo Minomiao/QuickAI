@@ -2,23 +2,43 @@
 
 ## Requirements
 
-+ Review the complete logic of `d:\codes\QuickAI\skills\powershell_executor\skill.py`
-+ Check the main program's design for confirmation mechanism requests
-+ Determine whether user confirmation is returned to AI or to skill
-+ Modify confirmation operation to return value to skill instead of AI
-+ Read and modify `d:\codes\QuickAI\skills\powershell_executor\skill.py` to handle confirmation operations through the main program
-+ Continue with original logic after receiving confirmation
-+ Commit changes
-+ Push changes to remote repository
-+ Create a new tag
-+ Retry pushing tag if failed
-+ Check modifications between current and previous tag
-+ Create a document using + (add), - (delete), / (change) format
-+ Add the document to .gitignore
-+ Do not use hash mark headings except for tag records in the document
-+ Record the document in English
-+ Use + for additions, - for deletions, / for changes
-+ Organize all requirements from previous context at the top of the change log in English
+## v0.2.2-fix (2026-04-26)
+
++ Add path traversal protection for file operations (create, read, modify, delete)
+/ Change thinking text color from Style.DIM to Fore.LIGHTBLACK_EX for legacy CMD compatibility
+/ Keep "思考过程:" label in default color, only think content and delimiter in gray
+/ Increase max tool call iterations from 10 to 20
++ Add /open command to switch work directory independently from /set settings mode
+/ Extract work directory setting from settings_mode into standalone open_work_directory()
++ Support /open with path argument (direct switch) and without (interactive prompt)
+/ Improve load_commands() to merge file commands onto defaults instead of replacing
++ Add _get_default_commands() as single source of truth for built-in commands
+/ Fix cached commands.json blocking new commands added in code updates
+/ Update README to reflect /open command and revised work directory configuration flow
+
+**modules/file_operation.py**:
+  / Add relative_to(work_path) validation to relative path branches in all 4 methods
+  / Reject paths that resolve outside work_directory with clear error message
+
+**main.py**:
+  + Add open_work_directory(path) function with interactive fallback and skill reload
+  + Add /open command handler in main loop with argument parsing
+  / Remove work directory display, input, save, and reload from settings_mode
+  / Change thinking callbacks (thinking, thinking_start, thinking_chunk, thinking_end) to Fore.LIGHTBLACK_EX
+
+**modules/commands.py**:
+  + Add open command definition (/open → "打开/切换工作目录")
+  / Refactor load_commands() to use _get_default_commands() as base and merge file data
+  / Prevent new commands from being hidden by stale cached commands.json
+
+**modules/chat.py**:
+  / Change max_iterations from 10 to 20
+
+**README.md**:
+  / Add /open command to command list table
+  / Update /set description to remove work directory reference
+  / Update work directory section to reference /open instead of /set
+  / Add /open to execution flow diagram
 
 ## v0.2.1 (2026-04-25)
 
