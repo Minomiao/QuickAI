@@ -1,15 +1,50 @@
 import os
 import json
 from datetime import datetime
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, set_key
 from modules import logger
 
 log = logger.get_logger("Dolphin.config")
 
-load_dotenv()
-
 DATE_DIR = "date"
 CONFIG_FILE = os.path.join(DATE_DIR, "config.json")
+ENV_FILE = os.path.join(DATE_DIR, ".env")
+
+load_dotenv(ENV_FILE)
+
+
+def _ensure_env_file():
+    """如果 .env 不存在且 config.json 存在，自动导入 api_key 和 work_directory 到 .env"""
+    env_path = Path(ENV_FILE)
+    if env_path.exists():
+        return
+
+    api_key = ""
+    work_dir = ""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+            api_key = config_data.get("api_key", "")
+            work_dir = config_data.get("work_directory", "")
+        except Exception as e:
+            log.warning(f"读取 config.json 失败: {e}")
+
+    try:
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        env_path.touch()
+        if api_key:
+            set_key(ENV_FILE, "QUICKAI_API_KEY", api_key)
+        if work_dir:
+            set_key(ENV_FILE, "QUICKAI_WORK_DIRECTORY", work_dir)
+        log.info(f"已自动创建 .env 文件并从 config.json 导入配置")
+        load_dotenv(ENV_FILE, override=True)
+    except Exception as e:
+        log.warning(f"创建 .env 文件失败: {e}")
+
+
+_ensure_env_file()
 
 MODEL_REGISTRY = {
     "deepseek-v4-flash": {
@@ -86,7 +121,11 @@ def load_config():
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
                 log.debug(f"加载配置文件: {CONFIG_FILE}")
-                return config_data
+            config_data.pop("api_key", None)
+            config_data.pop("work_directory", None)
+            config_data["api_key"] = os.getenv("QUICKAI_API_KEY", "")
+            config_data["work_directory"] = os.getenv("QUICKAI_WORK_DIRECTORY", "workplace")
+            return config_data
         except Exception as e:
             log.error(f"加载配置文件失败: {e}")
     log.debug("使用默认配置")
@@ -94,13 +133,30 @@ def load_config():
         "api_key": os.getenv("QUICKAI_API_KEY", ""),
         "base_url": os.getenv("QUICKAI_BASE_URL", "https://api.deepseek.com"),
         "model": "deepseek-v4-flash",
-        "work_directory": "workplace",
+        "work_directory": os.getenv("QUICKAI_WORK_DIRECTORY", "workplace"),
         "skills": {}
     }
 
+
 def save_config(config):
+    try:
+        api_key = config.get("api_key", "")
+        work_dir = config.get("work_directory", "")
+        env_path = Path(ENV_FILE)
+        if not env_path.exists():
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            env_path.touch()
+        if api_key:
+            set_key(ENV_FILE, "QUICKAI_API_KEY", api_key)
+        if work_dir:
+            set_key(ENV_FILE, "QUICKAI_WORK_DIRECTORY", work_dir)
+        load_dotenv(ENV_FILE, override=True)
+    except Exception as e:
+        log.warning(f"更新 .env 文件失败: {e}")
+
+    config_to_save = {k: v for k, v in config.items() if k not in ("api_key", "work_directory")}
     if not os.path.exists(DATE_DIR):
         os.makedirs(DATE_DIR)
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
+        json.dump(config_to_save, f, ensure_ascii=False, indent=2)
     log.debug(f"保存配置文件: {CONFIG_FILE}")

@@ -14,12 +14,12 @@ pip install -r requirements.txt
 
 ### 2. 配置
 
-创建 `.env` 文件或直接运行程序进入交互式配置：
+直接运行程序即可进入交互式配置，敏感数据自动保存在 `date/.env`：
 
 ```bash
-# .env（可选）
+# date/.env（自动管理，无需手动编辑）
 QUICKAI_API_KEY=your_api_key_here
-QUICKAI_BASE_URL=https://api.deepseek.com
+QUICKAI_WORK_DIRECTORY=workplace
 ```
 
 ### 3. 运行
@@ -28,7 +28,7 @@ QUICKAI_BASE_URL=https://api.deepseek.com
 python main.py
 ```
 
-首次运行会自动创建 `workplace/` 工作目录和 `date/config.json` 配置文件。在设置模式（`/set`）中可配置 API 密钥、模型等，工作目录可通过 `/open` 命令单独切换。
+首次运行会自动创建 `workplace/` 工作目录、`date/config.json` 和 `date/.env` 文件。如果存在旧版 `date/config.json`（含 `api_key`），程序会自动将其中的敏感数据迁移到 `date/.env` 并清除。API 密钥和工作目录通过 `/set` 和 `/open` 配置后仅保存在 `date/.env` 中。
 
 ---
 
@@ -395,21 +395,30 @@ def my_function(param1: str):
 
 ## 配置结构
 
-`date/config.json`：
+配置分为两个文件：
+
+**`date/config.json`**（不含敏感数据）：
 
 ```json
 {
-  "api_key": "your_api_key",
   "base_url": "https://api.deepseek.com",
   "model": "deepseek-v4-flash",
   "max_tokens": 8192,
-  "work_directory": "workplace",
   "skills": {},
   "plugins": {}
 }
 ```
 
-配置项可通过 `/set` 和 `/open` 修改，无需手动编辑。
+**`date/.env`**（敏感数据）：
+
+```
+QUICKAI_API_KEY=your_api_key_here
+QUICKAI_WORK_DIRECTORY=workplace
+```
+
+- `api_key` 和 `work_directory` 仅在 `date/.env` 中保存，`config.json` 不再包含这两项
+- 旧版 `config.json` 中的存量数据会在首次加载时自动迁移到 `.env` 并清除
+- 所有配置均可通过 `/set` 和 `/open` 修改，`date/.env` 无需手动编辑
 
 ---
 
