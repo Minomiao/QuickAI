@@ -419,7 +419,7 @@ async def main():
     global current_config, chat_instance, current_conversation
     
     while True:
-        user_input = input("\n您: ").strip()
+        user_input = input("\n> ").strip()
         
         # 如果用户没有输入任何内容，直接继续等待新输入
         if not user_input:
@@ -557,35 +557,129 @@ async def main():
         # 每次对话结束后检查是否有待确认的文件更改
         handle_pending_changes()
 
+def _progress_bar(percent, label):
+    bar_width = 25
+    filled = int(bar_width * percent / 100)
+    bar = "#" * filled + "-" * (bar_width - filled)
+    print(f"\r  [{bar}] {percent:3d}%  {label}", end="", flush=True)
+    if percent >= 100:
+        print()
+
+_DEEPSLEEPING = "d-e-e-p-s-l-e-e-p-i-n-g"
+
+def _build_dolphin_art():
+    D = [
+        " ████╗   ",
+        " ██╔═██╗ ",
+        " ██║ ██║ ",
+        " ██╠═██║ ",
+        " ████╝   ",
+    ]
+    O = [
+        "  ████╗  ",
+        " ██╔═██╗ ",
+        " ██║ ██║ ",
+        " ██╠═██║ ",
+        "  ████╝  ",
+    ]
+    L = [
+        " ██╗     ",
+        " ██║     ",
+        " ██║     ",
+        " ██║     ",
+        " ██████╗ ",
+    ]
+    P = [
+        " █████╗  ",
+        " ██╔═██╗ ",
+        " █████╔╝ ",
+        " ██╔══╝  ",
+        " ██║     ",
+    ]
+    H = [
+        " ██╗ ██╗ ",
+        " ██║ ██║ ",
+        " ██████║ ",
+        " ██╔═██║ ",
+        " ██║ ██║ ",
+    ]
+    I = [
+        " ██╗ ",
+        " ██║ ",
+        " ██║ ",
+        " ██║ ",
+        " ██║ ",
+    ]
+    N = [
+        " ███╗   ██╗ ",
+        " ██╔██╗ ██║ ",
+        " ██║╚██╗██║ ",
+        " ██║ ╚████║ ",
+        " ██║  ╚███║ ",
+    ]
+    letters = [D, O, L, P, H, I, N]
+    lines = []
+    for row in range(5):
+        lines.append("".join(L[row] for L in letters))
+    return "\n".join(lines)
+
+_DOLPHIN_ART = _build_dolphin_art()
+
+def _print_dolphin():
+    print(Fore.LIGHTBLUE_EX + _DOLPHIN_ART + Style.RESET_ALL)
+
+def _show_splash():
+    _print_dolphin()
+    print()
+
 if __name__ == "__main__":
     import asyncio
+    import time
     
+    _show_splash()
+    
+    _progress_bar(5, _DEEPSLEEPING[:1])
+    time.sleep(0.1)
     current_config = config.load_config()
+    _progress_bar(20, _DEEPSLEEPING[:3])
+    time.sleep(0.1)
     
     cmd._validate_commands()
+    _progress_bar(35, _DEEPSLEEPING[:7])
+    time.sleep(0.1)
     
     deprecation_warning = config.check_model_deprecation(current_config.get('model', 'deepseek-v4-flash'))
     if deprecation_warning:
         log.warning(deprecation_warning)
-        print(f"{Fore.YELLOW}警告: {deprecation_warning}{Style.RESET_ALL}")
     
     WORKPLACE_DIR = current_config.get('work_directory', 'workplace')
     if not os.path.exists(WORKPLACE_DIR):
         os.makedirs(WORKPLACE_DIR)
         log.info(f"创建工作目录: {WORKPLACE_DIR}")
+    _progress_bar(50, _DEEPSLEEPING[:11])
+    time.sleep(0.1)
     
     chat_instance = chat.QuickAIChat(
         model=current_config.get('model', 'deepseek-v4-flash'), 
         max_tokens=current_config.get('max_tokens', 8192),
         callback=chat_callback
     )
+    _progress_bar(85, _DEEPSLEEPING[:17])
+    time.sleep(0.1)
+    
     current_conversation = "main"
     
     log.info("Dolphin 启动")
     log.info(f"当前配置: model={current_config.get('model')}, max_tokens={current_config.get('max_tokens', 8192)}, conversation={current_conversation}, work_directory={WORKPLACE_DIR}")
-    print("Dolphin 聊天助手")
+    _progress_bar(100, _DEEPSLEEPING)
+    time.sleep(0.3)
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    _print_dolphin()
+    print("=" * 50)
+    if deprecation_warning:
+        print(f"{Fore.YELLOW}警告: {deprecation_warning}{Style.RESET_ALL}")
     print(f"输入 '{cmd.get_command('help')}' 获取命令帮助")
     print("=" * 50)
     
-    # 运行异步主函数
     asyncio.run(main())
