@@ -2,6 +2,7 @@ from typing import Dict, Any
 import sys
 import os
 from pathlib import Path
+from colorama import Fore, Style
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -79,7 +80,7 @@ def set_work_directory(directory: str) -> Dict[str, Any]:
             "message": f"临时工作目录已切换为: {temp_work_dir}",
             "format_hint": "建议使用相对路径格式，例如: 'subdir' 或 'subdir1/subdir2'，使用 '..' 返回上级目录",
             "warning": "注意：此设置为临时切换，下次对话开始时将恢复为默认工作目录",
-            "user_output": f"Work Place --{relative_path or '.'}"
+            "user_output": {"label": "Work Place", "content": f"--{relative_path or '.'}"}
         }
     except Exception as e:
         return {"error": f"设置工作目录失败: {str(e)}"}
@@ -161,9 +162,9 @@ def create_file(file_path: str, content: str, encoding: str = "utf-8") -> Dict[s
             filename = Path(full_path).name
             line_count = result.get("line_count", 0)
             if parent and parent != ".":
-                result["user_output"] = f"File Change {filename} --{parent} +{line_count} -0"
+                result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.LIGHTBLACK_EX}--{parent}{Style.RESET_ALL} {Fore.GREEN}+{line_count}{Style.RESET_ALL} {Fore.RED}-0{Style.RESET_ALL}"}
             else:
-                result["user_output"] = f"File Change {filename} +{line_count} -0"
+                result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.GREEN}+{line_count}{Style.RESET_ALL} {Fore.RED}-0{Style.RESET_ALL}"}
         return result
     except Exception as e:
         return {"error": f"创建文件失败: {str(e)}"}
@@ -194,9 +195,9 @@ def modify_file(file_path: str, start_line: int, end_line: int, start_line_conte
             new_count = result.get("new_lines_count", 0)
             old_count = result.get("modified_lines", 0)
             if parent and parent != ".":
-                result["user_output"] = f"File Change {filename} --{parent} +{new_count} -{old_count}"
+                result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.LIGHTBLACK_EX}--{parent}{Style.RESET_ALL} {Fore.GREEN}+{new_count}{Style.RESET_ALL} {Fore.RED}-{old_count}{Style.RESET_ALL}"}
             else:
-                result["user_output"] = f"File Change {filename} +{new_count} -{old_count}"
+                result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.GREEN}+{new_count}{Style.RESET_ALL} {Fore.RED}-{old_count}{Style.RESET_ALL}"}
         return result
     except Exception as e:
         return {"error": f"修改文件失败: {str(e)}"}
@@ -226,7 +227,7 @@ def delete_file(file_path: str, confirmed: bool = False) -> Dict[str, Any]:
         if result.get("success"):
             full_path = result.get("file_path", file_path)
             filename = Path(full_path).name
-            result["user_output"] = f"File Change --{filename} Delet"
+            result["user_output"] = {"label": "File Change", "content": f"--{filename} {Fore.RED}Delet{Style.RESET_ALL}"}
         return result
     except Exception as e:
         return {"error": f"删除文件失败: {str(e)}"}

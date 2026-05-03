@@ -195,8 +195,11 @@ class QuickAIChat:
             # 处理面向用户的输出
             self._last_tool_had_user_output = False
             if isinstance(result, dict) and "user_output" in result:
-                user_msg = result.pop("user_output")
-                await self._call_callback('user_output', {'content': user_msg})
+                user_out = result.pop("user_output")
+                if isinstance(user_out, dict):
+                    await self._call_callback('user_output', user_out)
+                else:
+                    await self._call_callback('user_output', {'content': str(user_out)})
                 self._last_tool_had_user_output = True
             
             if isinstance(result, dict):

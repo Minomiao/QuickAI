@@ -27,7 +27,7 @@ def get_work_directory() -> Dict[str, Any]:
     return {
         "success": True,
         "work_directory": work_dir,
-        "user_output": "Read --directory"
+        "user_output": {"label": "Read", "content": Path(work_dir).name}
     }
 
 
@@ -228,7 +228,7 @@ def search_files(pattern: str, directory: str = ".", search_in_content: bool = F
             "truncated": truncated,
             "max_results": MAX_SEARCH_RESULTS,
             "files_searched": files_searched if search_in_content else None,
-            "user_output": f"Search --{pattern}"
+            "user_output": {"label": "Search", "content": f"--{pattern}"}
         }
     
     except Exception as e:
@@ -304,7 +304,7 @@ def list_directory(directory: str = ".", max_depth: int = 10, show_hidden: bool 
             "line_count": len(tree_lines),
             "file_count": file_count,
             "truncated": file_count >= MAX_FILES_TO_READ,
-            "user_output": f"Read --{target_dir}\\"
+            "user_output": {"label": "Read", "content": f"--{target_dir}\\"}
         }
     
     except Exception as e:
@@ -390,7 +390,7 @@ def read_file(file_path: str, offset: int = 0, limit: int = 400, encoding: str =
             "size": file_size,
             "line_number_format": "N|content (N is the 1-based line number). Numbers and '|' are annotations ONLY, they are NOT part of the actual file content.",
             "message": f"读取第 {offset + 1}-{end_line} 行，共 {total_lines} 行",
-            "user_output": f"Read --{str(path.relative_to(Path(get_work_dir())))}"
+            "user_output": {"label": "Read", "content": f"--{str(path.relative_to(Path(get_work_dir())))}"}
         }
     
     except Exception as e:
