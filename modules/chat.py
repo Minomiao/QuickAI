@@ -391,6 +391,7 @@ class QuickAIChat:
             
             tool_responses = []
             displayed_calls = []
+            displayed_results = []
             for tc in tool_calls:
                 tool_name = tc.function.name
                 arguments_str = tc.function.arguments
@@ -431,11 +432,7 @@ class QuickAIChat:
                 
                 if not has_user_output:
                     displayed_calls.append(tc)
-                    formatted = format_tool_result(result)
-                    await self._call_callback('tool_result', {
-                        'raw': result,
-                        'formatted': formatted
-                    })
+                    displayed_results.append((result, format_tool_result(result)))
             
             if displayed_calls:
                 await self._call_callback('tool_calls', {
@@ -447,6 +444,11 @@ class QuickAIChat:
                         for tc in displayed_calls
                     ]
                 })
+                for raw, formatted in displayed_results:
+                    await self._call_callback('tool_result', {
+                        'raw': raw,
+                        'formatted': formatted
+                    })
             
             self.messages.extend(tool_responses)
             
@@ -558,6 +560,7 @@ class QuickAIChat:
             
             tool_responses = []
             displayed_calls = []
+            displayed_results = []
             for tc in tool_calls:
                 tool_name = tc['function']['name']
                 try:
@@ -581,11 +584,7 @@ class QuickAIChat:
                 
                 if not has_user_output:
                     displayed_calls.append(tc)
-                    formatted = format_tool_result(result)
-                    await self._call_callback('tool_result', {
-                        'raw': result,
-                        'formatted': formatted
-                    })
+                    displayed_results.append((result, format_tool_result(result)))
             
             if displayed_calls:
                 await self._call_callback('tool_calls', {
@@ -597,6 +596,11 @@ class QuickAIChat:
                         for tc in displayed_calls
                     ]
                 })
+                for raw, formatted in displayed_results:
+                    await self._call_callback('tool_result', {
+                        'raw': raw,
+                        'formatted': formatted
+                    })
             
             self.messages.extend(tool_responses)
             
@@ -620,6 +624,7 @@ class QuickAIChat:
                     
                     tool_responses = []
                     displayed_calls = []
+                    displayed_results = []
                     for tc in tool_calls:
                         tool_name = tc['function']['name']
                         try:
@@ -643,11 +648,7 @@ class QuickAIChat:
                         
                         if not has_user_output:
                             displayed_calls.append(tc)
-                            formatted = format_tool_result(result)
-                            await self._call_callback('tool_result', {
-                                'raw': result,
-                                'formatted': formatted
-                            })
+                            displayed_results.append((result, format_tool_result(result)))
                     
                     if displayed_calls:
                         await self._call_callback('tool_calls', {
@@ -659,6 +660,11 @@ class QuickAIChat:
                                 for tc in displayed_calls
                             ]
                         })
+                        for raw, formatted in displayed_results:
+                            await self._call_callback('tool_result', {
+                                'raw': raw,
+                                'formatted': formatted
+                            })
                     
                     self.messages.extend(tool_responses)
                     continue
