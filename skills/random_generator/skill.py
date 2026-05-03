@@ -1,5 +1,6 @@
 import random
 from typing import List, Dict, Any
+from colorama import Fore, Style
 
 
 skill_info = {
@@ -56,16 +57,35 @@ skill_info = {
 }
 
 
-def random_int(min: int, max: int) -> int:
-    return random.randint(min, max)
+def random_int(min: int, max: int) -> Dict[str, Any]:
+    value = random.randint(min, max)
+    return {
+        "success": True,
+        "result": value,
+        "user_output": {"label": "Random", "content": f"--int {Fore.LIGHTBLACK_EX}({min}-{max}){Style.RESET_ALL}"}
+    }
 
 
-def random_float(min: float, max: float) -> float:
-    return random.uniform(min, max)
+def random_float(min: float, max: float) -> Dict[str, Any]:
+    value = random.uniform(min, max)
+    return {
+        "success": True,
+        "result": value,
+        "user_output": {"label": "Random", "content": f"--float {Fore.LIGHTBLACK_EX}({min}-{max}){Style.RESET_ALL}"}
+    }
 
 
-def random_choice(choices: List[str]) -> str:
-    return random.choice(choices)
+def random_choice(choices: List[str]) -> Dict[str, Any]:
+    value = random.choice(choices)
+    preview = choices[:3]
+    options_str = ", ".join(preview)
+    if len(choices) > 3:
+        options_str += ", ..."
+    return {
+        "success": True,
+        "result": value,
+        "user_output": {"label": "Random", "content": f"--choices {Fore.LIGHTBLACK_EX}({options_str}){Style.RESET_ALL}"}
+    }
 
 
 def random_password(
@@ -74,12 +94,12 @@ def random_password(
     include_lowercase: bool = True,
     include_digits: bool = True,
     include_special: bool = True
-) -> str:
+) -> Dict[str, Any]:
     uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     lowercase = "abcdefghijklmnopqrstuvwxyz"
     digits = "0123456789"
     special = "!@#$%^&*()_+-=[]{}|;:,.<>?"
-    
+
     charset = ""
     if include_uppercase:
         charset += uppercase
@@ -89,12 +109,17 @@ def random_password(
         charset += digits
     if include_special:
         charset += special
-    
+
     if not charset:
-        raise ValueError("至少需要选择一种字符类型")
-    
+        return {"success": False, "error": "至少需要选择一种字符类型"}
+
     password = []
     for _ in range(length):
         password.append(random.choice(charset))
-    
-    return ''.join(password)
+
+    value = ''.join(password)
+    return {
+        "success": True,
+        "result": value,
+        "user_output": {"label": "Random", "content": f"--password {Fore.LIGHTBLACK_EX}({length}){Style.RESET_ALL}"}
+    }
