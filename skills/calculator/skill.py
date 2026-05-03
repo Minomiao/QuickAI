@@ -1,52 +1,26 @@
 import datetime
+from typing import Dict, Any
+from colorama import Fore, Style
+
+try:
+    from sympy import sympify, N, SympifyError
+    HAS_SYMPY = True
+except ImportError:
+    HAS_SYMPY = False
 
 
 skill_info = {
     "name": "calculator",
-    "description": "计算器技能，提供基本的数学计算功能",
+    "description": "计算器技能，使用 sympy 提供数学计算功能，支持表达式求值",
     "functions": {
-        "add": {
-            "description": "加法运算",
+        "calculate": {
+            "description": "计算数学表达式。支持加减乘除、幂运算、三角函数、对数、阶乘等。示例: '2+3*4', 'sqrt(16)', 'sin(pi/2)', 'log(100, 10)', 'factorial(5)'",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "a": {"type": "number", "description": "第一个数字"},
-                    "b": {"type": "number", "description": "第二个数字"}
+                    "expression": {"type": "string", "description": "数学表达式，如 '2+3*4' 或 'sin(pi/2)'"}
                 },
-                "required": ["a", "b"]
-            }
-        },
-        "subtract": {
-            "description": "减法运算",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "a": {"type": "number", "description": "第一个数字"},
-                    "b": {"type": "number", "description": "第二个数字"}
-                },
-                "required": ["a", "b"]
-            }
-        },
-        "multiply": {
-            "description": "乘法运算",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "a": {"type": "number", "description": "第一个数字"},
-                    "b": {"type": "number", "description": "第二个数字"}
-                },
-                "required": ["a", "b"]
-            }
-        },
-        "divide": {
-            "description": "除法运算",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "a": {"type": "number", "description": "被除数"},
-                    "b": {"type": "number", "description": "除数"}
-                },
-                "required": ["a", "b"]
+                "required": ["expression"]
             }
         },
         "get_current_time": {
@@ -61,22 +35,36 @@ skill_info = {
 }
 
 
-def add(a: float, b: float) -> float:
-    return a + b
+def calculate(expression: str) -> Dict[str, Any]:
+    if not HAS_SYMPY:
+        return {
+            "success": False,
+            "error": "sympy 未安装，请运行 pip install sympy"
+        }
 
+    try:
+        expr = sympify(expression)
+        result = N(expr)
 
-def subtract(a: float, b: float) -> float:
-    return a - b
+        if result == int(result):
+            result = int(result)
 
-
-def multiply(a: float, b: float) -> float:
-    return a * b
-
-
-def divide(a: float, b: float) -> float:
-    if b == 0:
-        raise ValueError("除数不能为零")
-    return a / b
+        return {
+            "success": True,
+            "expression": expression,
+            "result": result,
+            "user_output": {"label": "Calc", "content": f"--{result}"}
+        }
+    except SympifyError:
+        return {
+            "success": False,
+            "error": f"无法解析表达式: {expression}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"计算失败: {str(e)}"
+        }
 
 
 def get_current_time() -> str:

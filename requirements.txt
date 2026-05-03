@@ -5,3 +5,4 @@ requests>=2.31.0
 flask>=2.0.0
 flask-cors>=3.0.0
 colorama>=0.4.6
+sympy>=1.12
