@@ -375,6 +375,8 @@ def chat_callback(event_type, data):
             print(f"{Fore.GREEN}--结果:\n{data['formatted']}{Style.RESET_ALL}")
         else:
             print(f"{Fore.GREEN}--结果: {data['raw']}{Style.RESET_ALL}")
+    elif event_type == 'user_output':
+        print(f"{Fore.CYAN}{data['content']}{Style.RESET_ALL}")
     elif event_type == 'user_input_required':
         print(f"\n📝 需要输入:")
         print(f"  {data.get('prompt', '请输入信息')}")

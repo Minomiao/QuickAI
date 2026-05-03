@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
-CONFIRMATION_REQUIRED = False
 
 def get_request_manager():
     try:
@@ -34,15 +33,6 @@ def get_backup_manager():
         return backup_manager
     except Exception as e:
         print(f"获取 backup_manager 失败: {e}")
-        return None
-
-def get_config():
-    try:
-        # 现在通过 request_manager 访问配置
-        req_mgr = get_request_manager()
-        return req_mgr
-    except Exception as e:
-        print(f"获取 config 失败: {e}")
         return None
 
 
@@ -88,68 +78,17 @@ def set_work_directory(directory: str) -> Dict[str, Any]:
             "relative_path": relative_path if relative_path else ".",
             "message": f"临时工作目录已切换为: {temp_work_dir}",
             "format_hint": "建议使用相对路径格式，例如: 'subdir' 或 'subdir1/subdir2'，使用 '..' 返回上级目录",
-            "warning": "注意：此设置为临时切换，下次对话开始时将恢复为默认工作目录"
+            "warning": "注意：此设置为临时切换，下次对话开始时将恢复为默认工作目录",
+            "user_output": f"Work Place --{relative_path or '.'}"
         }
     except Exception as e:
         return {"error": f"设置工作目录失败: {str(e)}"}
-
-
-def get_work_directory() -> str:
-    return get_work_dir()
-
-
-def set_confirmation_required(required: bool) -> Dict[str, Any]:
-    global CONFIRMATION_REQUIRED
-    CONFIRMATION_REQUIRED = required
-    return {
-        "success": True,
-        "confirmation_required": CONFIRMATION_REQUIRED,
-        "message": f"确认机制已{'启用' if CONFIRMATION_REQUIRED else '禁用'}"
-    }
-
-
-def _is_path_allowed(file_path: str) -> Dict[str, Any]:
-    try:
-        path = Path(file_path)
-        
-        work_path = Path(get_work_dir()).resolve()
-        
-        if path.is_absolute():
-            resolved_path = path.resolve()
-        else:
-            resolved_path = (work_path / path).resolve()
-        
-        try:
-            resolved_path.relative_to(work_path)
-            return {"allowed": True, "path": str(resolved_path)}
-        except ValueError:
-            return {
-                "allowed": False,
-                "path": str(resolved_path),
-                "work_directory": str(work_path),
-                "requires_confirmation": True,
-                "message": f"路径 '{file_path}' 不在工作目录 '{get_work_dir()}' 内"
-            }
-    except Exception as e:
-        return {
-            "allowed": False,
-            "path": file_path,
-            "error": str(e)
-        }
 
 
 skill_info = {
     "name": "file_manager",
     "description": "文件管理器技能，可以创建、修改和删除文件",
     "functions": {
-        "get_work_directory": {
-            "description": "获取当前工作目录",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        },
         "set_work_directory": {
             "description": "设置工作目录（所有文件操作将限制在此目录内）。路径必须是当前工作目录的子目录，默认解析为相对路径。",
             "parameters": {
@@ -158,16 +97,6 @@ skill_info = {
                     "directory": {"type": "string", "description": "工作目录路径（建议使用相对路径格式，例如: 'subdir' 或 'subdir1/subdir2'）"}
                 },
                 "required": ["directory"]
-            }
-        },
-        "set_confirmation_required": {
-            "description": "设置是否需要用户确认（启用后，操作工作目录外的文件需要确认）",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "required": {"type": "boolean", "description": "是否需要确认"}
-                },
-                "required": ["required"]
             }
         },
         "create_file": {
@@ -199,17 +128,7 @@ skill_info = {
             }
         },
         "delete_file": {
-            "description": "删除文件。需要用户确认才能执行。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "文件路径（相对于工作目录）"}
-                },
-                "required": ["file_path"]
-            }
-        },
-        "confirm_delete_file": {
-            "description": "确认删除文件（在用户确认后调用）",
+            "description": "删除文件。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -220,13 +139,6 @@ skill_info = {
         }
     }
 }
-
-
-def get_work_directory_func() -> Dict[str, Any]:
-    return {
-        "success": True,
-        "work_directory": get_work_dir()
-    }
 
 
 def create_file(file_path: str, content: str, encoding: str = "utf-8") -> Dict[str, Any]:
@@ -243,6 +155,15 @@ def create_file(file_path: str, content: str, encoding: str = "utf-8") -> Dict[s
         )
         
         result = req_mgr.handle_request(create_request, None)
+        if result.get("success"):
+            full_path = result.get("file_path", file_path)
+            parent = str(Path(full_path).parent)
+            filename = Path(full_path).name
+            line_count = result.get("line_count", 0)
+            if parent and parent != ".":
+                result["user_output"] = f"File Change {filename} --{parent} +{line_count} -0"
+            else:
+                result["user_output"] = f"File Change {filename} +{line_count} -0"
         return result
     except Exception as e:
         return {"error": f"创建文件失败: {str(e)}"}
@@ -266,6 +187,16 @@ def modify_file(file_path: str, start_line: int, end_line: int, start_line_conte
         )
         
         result = req_mgr.handle_request(modify_request, None)
+        if result.get("success"):
+            full_path = result.get("file_path", file_path)
+            parent = str(Path(full_path).parent)
+            filename = Path(full_path).name
+            new_count = result.get("new_lines_count", 0)
+            old_count = result.get("modified_lines", 0)
+            if parent and parent != ".":
+                result["user_output"] = f"File Change {filename} --{parent} +{new_count} -{old_count}"
+            else:
+                result["user_output"] = f"File Change {filename} +{new_count} -{old_count}"
         return result
     except Exception as e:
         return {"error": f"修改文件失败: {str(e)}"}
@@ -283,23 +214,10 @@ def delete_file(file_path: str) -> Dict[str, Any]:
         )
         
         result = req_mgr.handle_request(delete_request, None)
-        return result
-    except Exception as e:
-        return {"error": f"删除文件失败: {str(e)}"}
-
-
-def confirm_delete_file(file_path: str) -> Dict[str, Any]:
-    try:
-        req_mgr = get_request_manager()
-        work_dir = get_work_dir()
-        
-        delete_request = req_mgr.create_file_operation_request(
-            "delete_file",
-            file_path=file_path,
-            work_directory=work_dir
-        )
-        
-        result = req_mgr.handle_request(delete_request, None)
+        if result.get("success"):
+            full_path = result.get("file_path", file_path)
+            filename = Path(full_path).name
+            result["user_output"] = f"File Change --{filename} Delet"
         return result
     except Exception as e:
         return {"error": f"删除文件失败: {str(e)}"}

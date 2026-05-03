@@ -15,6 +15,7 @@ class RequestType:
     CONFIG_REQUEST = "config_request"
     LOGGER_REQUEST = "logger_request"
     SKILL_REQUEST = "skill_request"
+    USER_OUTPUT = "user_output"
 
 class RequestManager:
     """申请管理器"""
@@ -170,6 +171,10 @@ class RequestManager:
         if data.get("requires_confirmation"):
             return True
         
+        # 检查是否包含面向用户的输出
+        if data.get("user_output"):
+            return True
+        
         return False
     
     def handle_request(self, request: Dict[str, Any], callback) -> Any:
@@ -206,6 +211,9 @@ class RequestManager:
         elif request_type == RequestType.SKILL_REQUEST:
             # 处理技能请求
             return self._handle_skill_request(request)
+        elif request.get("user_output"):
+            log.info(f"用户输出: {request.get('user_output', '')}")
+            return request
         
         return request
 

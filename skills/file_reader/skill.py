@@ -22,8 +22,13 @@ def get_work_dir():
         return 'workplace'
 
 
-def get_work_directory() -> str:
-    return get_work_dir()
+def get_work_directory() -> Dict[str, Any]:
+    work_dir = get_work_dir()
+    return {
+        "success": True,
+        "work_directory": work_dir,
+        "user_output": "Read --directory"
+    }
 
 
 def set_confirmation_required(required: bool) -> Dict[str, Any]:
@@ -130,13 +135,6 @@ skill_info = {
 }
 
 
-def get_work_directory_func() -> Dict[str, Any]:
-    return {
-        "success": True,
-        "work_directory": get_work_dir()
-    }
-
-
 def search_files(pattern: str, directory: str = ".", search_in_content: bool = False, file_extension: str = None) -> Dict[str, Any]:
     try:
         path_check = _is_path_allowed(directory)
@@ -229,7 +227,8 @@ def search_files(pattern: str, directory: str = ".", search_in_content: bool = F
             "files": results,
             "truncated": truncated,
             "max_results": MAX_SEARCH_RESULTS,
-            "files_searched": files_searched if search_in_content else None
+            "files_searched": files_searched if search_in_content else None,
+            "user_output": f"Search --{pattern}"
         }
     
     except Exception as e:
@@ -296,13 +295,16 @@ def list_directory(directory: str = ".", max_depth: int = 10, show_hidden: bool 
         
         tree_lines = build_tree(list_path)
         
+        target_dir = str(list_path.relative_to(Path(get_work_dir()))) if str(list_path.relative_to(Path(get_work_dir()))) != "." else "all"
+        
         return {
             "success": True,
             "directory": directory,
             "tree": "\n".join(tree_lines),
             "line_count": len(tree_lines),
             "file_count": file_count,
-            "truncated": file_count >= MAX_FILES_TO_READ
+            "truncated": file_count >= MAX_FILES_TO_READ,
+            "user_output": f"Read --{target_dir}\\"
         }
     
     except Exception as e:
@@ -387,7 +389,8 @@ def read_file(file_path: str, offset: int = 0, limit: int = 400, encoding: str =
             "has_more": end_line < total_lines,
             "size": file_size,
             "line_number_format": "N|content (N is the 1-based line number). Numbers and '|' are annotations ONLY, they are NOT part of the actual file content.",
-            "message": f"读取第 {offset + 1}-{end_line} 行，共 {total_lines} 行"
+            "message": f"读取第 {offset + 1}-{end_line} 行，共 {total_lines} 行",
+            "user_output": f"Read --{str(path.relative_to(Path(get_work_dir())))}"
         }
     
     except Exception as e:

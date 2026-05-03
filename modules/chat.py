@@ -192,6 +192,13 @@ class QuickAIChat:
                     log.debug(f"检测到申请: {result.get('type', 'unknown')}")
                     self.request_manager.handle_request(result, self.callback)
             
+            # 处理面向用户的输出
+            self._last_tool_had_user_output = False
+            if isinstance(result, dict) and "user_output" in result:
+                user_msg = result.pop("user_output")
+                await self._call_callback('user_output', {'content': user_msg})
+                self._last_tool_had_user_output = True
+            
             if isinstance(result, dict):
                 # 拦截 set_work_directory 成功结果，同步更新 AI 临时工作目录
                 if result.get("success") and "set_work_directory" in tool_name and result.get("work_directory"):
@@ -382,17 +389,8 @@ class QuickAIChat:
             ]
             self.add_message("assistant", assistant_message.content or "", tool_calls_list, reasoning_content=reasoning)
             
-            await self._call_callback('tool_calls', {
-                'calls': [
-                    {
-                        'name': tc.function.name,
-                        'arguments': tc.function.arguments
-                    }
-                    for tc in tool_calls
-                ]
-            })
-            
             tool_responses = []
+            displayed_calls = []
             for tc in tool_calls:
                 tool_name = tc.function.name
                 arguments_str = tc.function.arguments
@@ -418,6 +416,7 @@ class QuickAIChat:
                     continue
                 
                 result = await self._execute_tool_sync(tool_name, arguments)
+                has_user_output = self._last_tool_had_user_output
                 
                 result, skip = await self._process_tool_confirmation(result, tool_name, arguments)
                 if skip:
@@ -430,10 +429,23 @@ class QuickAIChat:
                     "content": result
                 })
                 
-                formatted = format_tool_result(result)
-                await self._call_callback('tool_result', {
-                    'raw': result,
-                    'formatted': formatted
+                if not has_user_output:
+                    displayed_calls.append(tc)
+                    formatted = format_tool_result(result)
+                    await self._call_callback('tool_result', {
+                        'raw': result,
+                        'formatted': formatted
+                    })
+            
+            if displayed_calls:
+                await self._call_callback('tool_calls', {
+                    'calls': [
+                        {
+                            'name': tc.function.name,
+                            'arguments': tc.function.arguments
+                        }
+                        for tc in displayed_calls
+                    ]
                 })
             
             self.messages.extend(tool_responses)
@@ -544,17 +556,8 @@ class QuickAIChat:
             log.info(f"检测到 {len(tool_calls)} 个工具调用")
             self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
             
-            await self._call_callback('tool_calls', {
-                'calls': [
-                    {
-                        'name': tc['function']['name'],
-                        'arguments': tc['function']['arguments']
-                    }
-                    for tc in tool_calls
-                ]
-            })
-            
             tool_responses = []
+            displayed_calls = []
             for tc in tool_calls:
                 tool_name = tc['function']['name']
                 try:
@@ -563,6 +566,7 @@ class QuickAIChat:
                     arguments = {}
                 
                 result = await self._execute_tool_sync(tool_name, arguments)
+                has_user_output = self._last_tool_had_user_output
                 
                 result, skip = await self._process_tool_confirmation(result, tool_name, arguments)
                 if skip:
@@ -575,10 +579,23 @@ class QuickAIChat:
                     "content": result
                 })
                 
-                formatted = format_tool_result(result)
-                await self._call_callback('tool_result', {
-                    'raw': result,
-                    'formatted': formatted
+                if not has_user_output:
+                    displayed_calls.append(tc)
+                    formatted = format_tool_result(result)
+                    await self._call_callback('tool_result', {
+                        'raw': result,
+                        'formatted': formatted
+                    })
+            
+            if displayed_calls:
+                await self._call_callback('tool_calls', {
+                    'calls': [
+                        {
+                            'name': tc['function']['name'],
+                            'arguments': tc['function']['arguments']
+                        }
+                        for tc in displayed_calls
+                    ]
                 })
             
             self.messages.extend(tool_responses)
@@ -601,17 +618,8 @@ class QuickAIChat:
                     log.info(f"迭代 {iteration}: 检测到 {len(tool_calls)} 个工具调用")
                     self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
                     
-                    await self._call_callback('tool_calls', {
-                        'calls': [
-                            {
-                                'name': tc['function']['name'],
-                                'arguments': tc['function']['arguments']
-                            }
-                            for tc in tool_calls
-                        ]
-                    })
-                    
                     tool_responses = []
+                    displayed_calls = []
                     for tc in tool_calls:
                         tool_name = tc['function']['name']
                         try:
@@ -620,6 +628,7 @@ class QuickAIChat:
                             arguments = {}
                         
                         result = await self._execute_tool_sync(tool_name, arguments)
+                        has_user_output = self._last_tool_had_user_output
                         
                         result, skip = await self._process_tool_confirmation(result, tool_name, arguments)
                         if skip:
@@ -632,10 +641,23 @@ class QuickAIChat:
                             "content": result
                         })
                         
-                        formatted = format_tool_result(result)
-                        await self._call_callback('tool_result', {
-                            'raw': result,
-                            'formatted': formatted
+                        if not has_user_output:
+                            displayed_calls.append(tc)
+                            formatted = format_tool_result(result)
+                            await self._call_callback('tool_result', {
+                                'raw': result,
+                                'formatted': formatted
+                            })
+                    
+                    if displayed_calls:
+                        await self._call_callback('tool_calls', {
+                            'calls': [
+                                {
+                                    'name': tc['function']['name'],
+                                    'arguments': tc['function']['arguments']
+                                }
+                                for tc in displayed_calls
+                            ]
                         })
                     
                     self.messages.extend(tool_responses)
