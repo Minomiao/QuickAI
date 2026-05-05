@@ -124,16 +124,50 @@ def show_tools():
         print("\n没有可用的工具")
 
 def show_skills():
+    log.info("显示技能管理")
+
     skills = chat_instance.list_skills()
-    log.info(f"显示可用技能，共 {len(skills)} 个")
-    if skills:
-        print("\n=== 可用技能 ===")
-        for skill in skills:
-            print(f"  - {skill['name']}")
-            print(f"    描述: {skill['description']}")
-            print(f"    函数: {', '.join(skill['functions'])}")
-    else:
+    if not skills:
         print("\n没有可用的技能")
+        return
+
+    print("\n=== 技能管理 ===")
+    for i, skill in enumerate(skills, 1):
+        status = "启用" if skill.get('enabled', True) else "禁用"
+        print(f"  {i}. {skill['name']} [{status}]")
+        print(f"     {skill['description']}")
+
+    print(f"输入 '{cmd.get_command('back')}' 返回主界面")
+    while True:
+        choice = input("输入编号切换状态: ").strip()
+        if not choice or choice == cmd.get_command('back'):
+            return
+
+        try:
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(skills):
+                print("无效的编号")
+                continue
+        except ValueError:
+            print("无效的输入")
+            continue
+
+        skill = skills[idx]
+        skill_name = skill['name']
+        current_status = skill.get('enabled', True)
+        target_status = not current_status
+
+        if skill_name.startswith("plugin-"):
+            result = chat_instance.plugin_loader.toggle_skill(skill_name, target_status)
+        else:
+            result = chat_instance.skill_mgr.toggle_skill(skill_name, target_status)
+
+        if result.get('success'):
+            new_status_text = "启用" if target_status else "禁用"
+            print(f"  {idx + 1}. {skill['name']} [{new_status_text}]")
+            skill['enabled'] = target_status
+        else:
+            print(f"错误: {result.get('error')}")
 
 def toggle_tools():
     current_status = chat_instance.enable_tools
@@ -256,106 +290,12 @@ def model_settings():
     log.info("客户端已更新")
     print("客户端已更新")
 
-def manage_skills():
-    from modules import config
-    skills = chat_instance.list_skills()
-    
-    print("\n=== 技能管理 ===")
-    if skills:
-        for i, skill in enumerate(skills, 1):
-            status = "启用" if skill.get('enabled', True) else "禁用"
-            print(f"{i}. {skill['name']} - {skill['description']} [{status}]")
-            print(f"   函数: {', '.join(skill['functions'])}")
-    else:
-        print("没有可用的技能")
-        return
-    
-    # 逐个询问用户是否修改技能状态
-    print("\n=== 技能状态设置 ===")
-    print("现在将逐个询问每个技能的状态设置")
-    print("输入 'y' 确认当前状态，或输入 'n' 切换状态，或输入 's' 跳过")
-    
-    updated_skills = []
-    
-    for skill in skills:
-        skill_name = skill['name']
-        current_status = skill.get('enabled', True)
-        status_text = "启用" if current_status else "禁用"
-        
-        print(f"\n技能: {skill_name}")
-        print(f"描述: {skill['description']}")
-        print(f"当前状态: {status_text}")
-        print(f"包含函数: {', '.join(skill['functions'])}")
-        
-        while True:
-            choice = input(f"是否保持{status_text}状态? (y/n/s): ").lower()
-            if choice in ['y', 'n', 's']:
-                break
-            print("请输入有效的选项: y (保持) / n (切换) / s (跳过)")
-        
-        if choice == 's':
-            print(f"跳过技能 {skill_name}")
-            continue
-        elif choice == 'n':
-            new_status = not current_status
-            # 检查是否是插件技能
-            if skill_name.startswith("plugin-"):
-                result = chat_instance.plugin_loader.toggle_skill(skill_name, new_status)
-            else:
-                result = chat_instance.skill_mgr.toggle_skill(skill_name, new_status)
-            if result.get('success'):
-                new_status_text = "启用" if new_status else "禁用"
-                print(f"技能 '{skill_name}' 已{new_status_text}")
-                updated_skills.append(skill_name)
-            else:
-                print(f"错误: {result.get('error')}")
-        else:  # choice == 'y'
-            print(f"保持技能 '{skill_name}' {status_text}状态")
-    
-    # 显示更新结果
-    if updated_skills:
-        print(f"\n=== 更新完成 ===")
-        print(f"已更新 {len(updated_skills)} 个技能的状态")
-        for skill_name in updated_skills:
-            # 检查是否是插件技能
-            if skill_name.startswith("plugin-"):
-                original_skill_name = skill_name[8:]
-                plugins_config = config.load_config().get('plugins', {})
-                status = "启用" if plugins_config.get(original_skill_name, True) else "禁用"
-            else:
-                skills_config = config.load_config().get('skills', {})
-                status = "启用" if skills_config.get(skill_name, True) else "禁用"
-            print(f"- {skill_name}: {status}")
-    else:
-        print("\n=== 操作完成 ===")
-        print("没有更新任何技能的状态")
-    
-    # 提供额外的修改选项
-    print("\n=== 额外选项 ===")
-    print("1. 查看当前技能状态")
-    print("2. 返回主菜单")
-    
-    while True:
-        choice = input("请选择: ")
-        if choice == '1':
-            skills = chat_instance.list_skills()
-            print("\n=== 当前技能状态 ===")
-            for i, skill in enumerate(skills, 1):
-                status = "启用" if skill.get('enabled', True) else "禁用"
-                print(f"{i}. {skill['name']} - [{status}]")
-        elif choice == '2':
-            break
-        else:
-            print("请输入有效的选项: 1 (查看状态) / 2 (返回)")
-    
-    print("退出技能管理")
-
 def chat_callback(event_type, data):
     """处理聊天事件的回调函数"""
     if event_type == 'thinking':
-        print(f"思考过程:\n{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}--- 思考过程结束 ---{Style.RESET_ALL}\n")
+        print(f"{Fore.LIGHTBLACK_EX}思考过程:{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}--- 思考过程结束 ---{Style.RESET_ALL}\n")
     elif event_type == 'thinking_start':
-        print("思考过程:")
+        print(f"{Fore.LIGHTBLACK_EX}思考过程:{Style.RESET_ALL}")
     elif event_type == 'thinking_chunk':
         print(f"{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}", end="", flush=True)
     elif event_type == 'thinking_end':
@@ -543,9 +483,6 @@ async def main():
             continue
         elif user_input == cmd.get_command('toggle'):
             toggle_tools()
-            continue
-        elif user_input == cmd.get_command('skill'):
-            manage_skills()
             continue
         
         prefix = cmd._get_prefix()

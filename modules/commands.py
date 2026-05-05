@@ -60,10 +60,6 @@ def _get_default_commands():
                 "input": "toggle",
                 "description": "切换工具启用/禁用状态"
             },
-            "skill": {
-                "input": "skill",
-                "description": "管理技能启用/禁用状态"
-            },
             "open": {
                 "input": "open",
                 "description": "打开/切换工作目录"

@@ -144,7 +144,7 @@ class QuickAIChat:
         else:
             #  fallback to default prompt
             directory_structure = self.get_directory_structure()
-            default_prompt = f"你是一个AI助手。当用户要求完成任务时，必须确保完成所有必要的步骤，不要中途停止。重要限制：每次只能调用一个工具（skill），等待工具返回结果后，再决定是否需要调用下一个工具。不要同时调用多个工具。重要：在每次回答结束时，必须至少给出一个正常的输出（除了思考过程和工具调用之外的内容），让用户知道发生了什么。始终以完整的回答结束对话。当前工作目录：{self.current_work_directory}。所有文件操作都在此目录下进行，可以使用子文件夹路径，例如 'subdir/file.txt' 或 'subdir1/subdir2/file.txt'。如果需要切换工作目录，请使用 file_manager 技能的 set_work_directory 函数。切换后的工作目录仅在当前对话有效，下次对话开始时会恢复为此目录。\n\n当前工作目录的文件结构：\n{directory_structure}"
+            default_prompt = f"你是一个AI助手。当用户要求完成任务时，必须确保完成所有必要的步骤，不要中途停止。重要限制：每次只能调用一个工具（skill），等待工具返回结果后，再决定是否需要调用下一个工具。不要同时调用多个工具。重要：在每次回答结束时，必须至少给出一个正常的输出（除了思考过程和工具调用之外的内容），让用户知道发生了什么。始终以完整的回答结束对话。重要：你的所有输出都将显示在终端中，因此请使用纯文本格式输出，不要使用Markdown格式（如 **粗体**、*斜体*、# 标题、- 列表、`代码块`、```代码围栏```、表格、> 引用等），使用自然语言和空格缩进来表达结构和层级。当前工作目录：{self.current_work_directory}。所有文件操作都在此目录下进行，可以使用子文件夹路径，例如 'subdir/file.txt' 或 'subdir1/subdir2/file.txt'。如果需要切换工作目录，请使用 file_manager 技能的 set_work_directory 函数。切换后的工作目录仅在当前对话有效，下次对话开始时会恢复为此目录。\n\n当前工作目录的文件结构：\n{directory_structure}"
             return default_prompt
     
     def get_directory_structure(self) -> str:
