@@ -115,28 +115,44 @@ def check_model_deprecation(model_name):
     except (ValueError, TypeError):
         return None
 
+def _get_default_config():
+    return {
+        "base_url": os.getenv("QUICKAI_BASE_URL", "https://api.deepseek.com"),
+        "model": "deepseek-v4-flash",
+        "command_prefix": "/",
+        "max_tokens": 8192,
+        "reasoning": True,
+        "skills": {},
+        "plugins": {},
+        "show_thinking": False,
+    }
+
+
 def load_config():
+    defaults = _get_default_config()
+
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
+                file_data = json.load(f)
                 log.debug(f"加载配置文件: {CONFIG_FILE}")
-            config_data.pop("api_key", None)
-            config_data.pop("work_directory", None)
-            config_data["api_key"] = os.getenv("QUICKAI_API_KEY", "")
-            config_data["work_directory"] = os.getenv("QUICKAI_WORK_DIRECTORY", "workplace")
-            return config_data
         except Exception as e:
             log.error(f"加载配置文件失败: {e}")
-    log.debug("使用默认配置")
-    return {
-        "api_key": os.getenv("QUICKAI_API_KEY", ""),
-        "base_url": os.getenv("QUICKAI_BASE_URL", "https://api.deepseek.com"),
-        "model": "deepseek-v4-flash",
-        "work_directory": os.getenv("QUICKAI_WORK_DIRECTORY", "workplace"),
-        "command_prefix": "/",
-        "skills": {}
-    }
+            file_data = {}
+    else:
+        file_data = {}
+
+    config_data = dict(defaults)
+    config_data.update({k: v for k, v in file_data.items() if k not in ("api_key", "work_directory")})
+    config_data["api_key"] = os.getenv("QUICKAI_API_KEY", "")
+    config_data["work_directory"] = os.getenv("QUICKAI_WORK_DIRECTORY", "workplace")
+
+    missing_keys = [k for k in defaults if k not in file_data]
+    if missing_keys:
+        log.info(f"补全缺失的配置键: {missing_keys}")
+        save_config(config_data)
+
+    return config_data
 
 
 def save_config(config):

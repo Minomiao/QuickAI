@@ -33,3 +33,21 @@ def setup_logger(name="Dolphin", level=logging.DEBUG):
 
 def get_logger(name="QuickAI"):
     return logging.getLogger(name)
+
+
+def log_thinking(content: str):
+    if not content:
+        return
+
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
+
+    think_log_filename = "think_" + datetime.now().strftime("%Y-%m-%d") + ".log"
+    think_log_filepath = os.path.join(LOG_DIR, think_log_filename)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(think_log_filepath, 'a', encoding='utf-8') as f:
+        f.write(f"\n[{timestamp}] 思考过程:\n")
+        f.write(content)
+        f.write("\n")

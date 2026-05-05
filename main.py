@@ -5,6 +5,7 @@ from modules import chat
 from modules import logger
 from modules import backup_manager
 import os
+import time
 
 # 导入 colorama 库
 from colorama import init, Fore, Back, Style
@@ -18,6 +19,9 @@ _SCREEN_ALT_ENTER = '\033[?1049h'
 _SCREEN_ALT_EXIT = '\033[?1049l'
 
 _using_alt_screen = False
+
+show_thinking = False
+_thinking_start_time = 0.0
 
 
 def _supports_ansi():
@@ -333,14 +337,28 @@ def model_settings():
 
 def chat_callback(event_type, data):
     """处理聊天事件的回调函数"""
+    global _thinking_start_time
     if event_type == 'thinking':
-        print(f"{Fore.LIGHTBLACK_EX}思考过程:{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}--- 思考过程结束 ---{Style.RESET_ALL}\n")
+        if show_thinking:
+            print(f"{Fore.LIGHTBLACK_EX}思考过程:{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}--- 思考过程结束 ---{Style.RESET_ALL}\n")
     elif event_type == 'thinking_start':
-        print(f"{Fore.LIGHTBLACK_EX}思考过程:{Style.RESET_ALL}")
+        if show_thinking:
+            print(f"{Fore.LIGHTBLACK_EX}思考过程:{Style.RESET_ALL}")
+        else:
+            _thinking_start_time = time.time()
+            print(f"\r\033[K{Fore.LIGHTBLACK_EX}正在思考中(0s){Style.RESET_ALL}", end="", flush=True)
     elif event_type == 'thinking_chunk':
-        print(f"{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}", end="", flush=True)
+        if show_thinking:
+            print(f"{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}", end="", flush=True)
+        else:
+            elapsed = int(time.time() - _thinking_start_time)
+            print(f"\r\033[K{Fore.LIGHTBLACK_EX}正在思考中({elapsed}s){Style.RESET_ALL}", end="", flush=True)
     elif event_type == 'thinking_end':
-        print(f"\n{Fore.LIGHTBLACK_EX}--- 思考过程结束 ---{Style.RESET_ALL}")
+        if show_thinking:
+            print(f"\n{Fore.LIGHTBLACK_EX}--- 思考过程结束 ---{Style.RESET_ALL}")
+        else:
+            elapsed = int(time.time() - _thinking_start_time)
+            print(f"\r\033[K{Fore.LIGHTBLACK_EX}思考完成({elapsed}s){Style.RESET_ALL}")
     elif event_type == 'response_chunk':
         print(data['content'], end="", flush=True)
     elif event_type == 'response_end':
@@ -404,7 +422,7 @@ def chat_callback(event_type, data):
         print("如果任务未完成，请继续对话以继续执行。")
 
 async def main():
-    global current_config, chat_instance, current_conversation
+    global current_config, chat_instance, current_conversation, show_thinking
     
     while True:
         user_input = input("\n> ").strip()
@@ -537,6 +555,34 @@ async def main():
         elif user_input == cmd.get_command('toggle'):
             toggle_tools()
             continue
+        elif user_input.startswith(cmd.get_command('showthinking')):
+            showthink_cmd = cmd.get_command('showthinking')
+            parts = user_input[len(showthink_cmd):].strip()
+            if parts == 'on':
+                show_thinking = True
+                current_config['show_thinking'] = True
+                config.save_config(current_config)
+                print("思考过程显示: 开启")
+            elif parts == 'off':
+                show_thinking = False
+                current_config['show_thinking'] = False
+                config.save_config(current_config)
+                print("思考过程显示: 关闭")
+            else:
+                choice = input("开启思考过程显示? (on/off): ").strip().lower()
+                if choice == 'on':
+                    show_thinking = True
+                    current_config['show_thinking'] = True
+                    config.save_config(current_config)
+                    print("思考过程显示: 开启")
+                elif choice == 'off':
+                    show_thinking = False
+                    current_config['show_thinking'] = False
+                    config.save_config(current_config)
+                    print("思考过程显示: 关闭")
+                else:
+                    print(f"{Fore.RED}无效输入，请输入 on 或 off{Style.RESET_ALL}")
+            continue
         
         prefix = cmd._get_prefix()
         if user_input.startswith(prefix):
@@ -638,6 +684,7 @@ if __name__ == "__main__":
     _progress_bar(5, _DEEPSLEEPING[:1])
     time.sleep(0.1)
     current_config = config.load_config()
+    show_thinking = current_config.get('show_thinking', False)
     _progress_bar(20, _DEEPSLEEPING[:3])
     time.sleep(0.1)
     

@@ -12,6 +12,8 @@ import uuid
 
 log = logger.get_logger("Dolphin.chat")
 
+from modules.logger import log_thinking
+
 def format_tool_result(result_str):
     """格式化工具返回结果，使其更易读"""
     try:
@@ -325,6 +327,7 @@ class QuickAIChat:
         
         if reasoning:
             log.debug(f"思考过程长度: {len(reasoning)}")
+            log_thinking(reasoning)
             await self._call_callback('thinking', {
                 'content': reasoning
             })
@@ -507,7 +510,10 @@ class QuickAIChat:
         
         stream = self.client.chat.completions.create(**kwargs)
         full_response, full_reasoning, tool_calls_buffer, has_tool_calls = await self._process_stream(stream)
-        
+
+        if full_reasoning:
+            log_thinking(full_reasoning)
+
         if not has_tool_calls:
             self.add_message("assistant", full_response, reasoning_content=full_reasoning)
         
@@ -575,7 +581,9 @@ class QuickAIChat:
                 stream = self.client.chat.completions.create(**kwargs)
                 
                 full_response, full_reasoning, tool_calls_buffer, has_tool_calls = await self._process_stream(stream)
-                
+
+                if full_reasoning:
+                    log_thinking(f"[迭代 {iteration}] {full_reasoning}")
                 if has_tool_calls and tool_calls_buffer:
                     tool_calls = list(tool_calls_buffer.values())
                     log.info(f"迭代 {iteration}: 检测到 {len(tool_calls)} 个工具调用")
