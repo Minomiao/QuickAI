@@ -1,6 +1,7 @@
 import os
 import sys
 from typing import Dict, Any
+from colorama import Fore, Style
 
 MAX_SCRIPT_LENGTH = 10000
 
@@ -88,16 +89,21 @@ def run_script(script: str, timeout: int = None, wait_time: int = None) -> Dict[
             log.info(f"AI 请求运行 PowerShell 脚本 (长度: {script_length} 字符, 超时: {actual_timeout}s, 等待: {actual_wait}s)")
 
         script_preview = script[:500] + "..." if len(script) > 500 else script
+        short_preview = script.split('\n')[0][:80]
+        if len(script.split('\n')[0]) > 80:
+            short_preview += "..."
         message = f"确认运行 PowerShell 脚本 (长度: {script_length} 字符, 超时: {actual_timeout}s, 等待: {actual_wait}s):\n{script_preview}"
 
         if rm:
-            return rm.create_skill_confirmation(
+            result = rm.create_skill_confirmation(
                 message=message,
                 action="run_powershell_script",
                 script=script,
                 timeout=actual_timeout,
                 wait_time=actual_wait
             )
+            result["user_output"] = {"label": "Run", "content": f"--{short_preview}"}
+            return result
         else:
             return {
                 "requires_confirmation": True,
@@ -105,7 +111,8 @@ def run_script(script: str, timeout: int = None, wait_time: int = None) -> Dict[
                 "action": "run_powershell_script",
                 "script": script,
                 "timeout": actual_timeout,
-                "wait_time": actual_wait
+                "wait_time": actual_wait,
+                "user_output": {"label": "Run", "content": f"--{short_preview}"}
             }
 
     except Exception as e:
@@ -118,10 +125,32 @@ async def check_script(command_id: str, wait_time: int = None) -> Dict[str, Any]
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     from modules import powershell_manager
     actual_wait = wait_time if wait_time is not None else 10
-    return await powershell_manager.check_script(command_id, actual_wait)
+    result = await powershell_manager.check_script(command_id, actual_wait)
+    output = result.get("output", "")
+    display = _truncate_output(output)
+    result["user_output"] = {
+        "label": "Read",
+        "content": f"--{Fore.LIGHTBLACK_EX}{command_id}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}{display}{Style.RESET_ALL}"
+    }
+    return result
+
+
+def _truncate_output(output: str) -> str:
+    output = output.rstrip('\n')
+    if not output:
+        return output
+    lines = output.split('\n')
+    if len(lines) <= 6:
+        return output
+    return '\n'.join(lines[:3]) + "\n..." + '\n'.join(lines[-3:])
 
 
 def kill_command(command_id: str) -> Dict[str, Any]:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     from modules import powershell_manager
-    return powershell_manager.kill_command(command_id)
+    result = powershell_manager.kill_command(command_id)
+    result["user_output"] = {
+        "label": "Stop",
+        "content": f"--{Fore.LIGHTBLACK_EX}{command_id}{Style.RESET_ALL}"
+    }
+    return result
