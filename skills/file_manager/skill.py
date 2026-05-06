@@ -64,9 +64,9 @@ def set_work_directory(directory: str) -> Dict[str, Any]:
             resolved_path = base_path
 
         if not resolved_path.exists():
-            return {"error": f"目录不存在: {resolved_path}"}
+            return {"error": f"目录不存在: {resolved_path}", "user_output": {"label": "Work Place", "content": f"--{directory} {Fore.RED}Error{Style.RESET_ALL}"}}
         if not resolved_path.is_dir():
-            return {"error": f"路径不是目录: {resolved_path}"}
+            return {"error": f"路径不是目录: {resolved_path}", "user_output": {"label": "Work Place", "content": f"--{directory} {Fore.RED}Error{Style.RESET_ALL}"}}
 
         relative_path = str(resolved_path.relative_to(base_path))
         if relative_path == ".":
@@ -83,7 +83,7 @@ def set_work_directory(directory: str) -> Dict[str, Any]:
             "user_output": {"label": "Work Place", "content": f"--{relative_path or '.'}"}
         }
     except Exception as e:
-        return {"error": f"设置工作目录失败: {str(e)}"}
+        return {"error": f"设置工作目录失败: {str(e)}", "user_output": {"label": "Work Place", "content": f"-- {Fore.RED}Error{Style.RESET_ALL}"}}
 
 
 skill_info = {
@@ -165,9 +165,13 @@ def create_file(file_path: str, content: str, encoding: str = "utf-8") -> Dict[s
                 result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.LIGHTBLACK_EX}--{parent}{Style.RESET_ALL} {Fore.GREEN}+{line_count}{Style.RESET_ALL} {Fore.RED}-0{Style.RESET_ALL}"}
             else:
                 result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.GREEN}+{line_count}{Style.RESET_ALL} {Fore.RED}-0{Style.RESET_ALL}"}
+        else:
+            filename = Path(file_path).name
+            result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.RED}Error{Style.RESET_ALL}"}
         return result
     except Exception as e:
-        return {"error": f"创建文件失败: {str(e)}"}
+        filename = Path(file_path).name
+        return {"error": f"创建文件失败: {str(e)}", "user_output": {"label": "File Change", "content": f"{filename} {Fore.RED}Error{Style.RESET_ALL}"}}
 
 
 def modify_file(file_path: str, start_line: int, end_line: int, start_line_content: str, end_line_content: str, new_lines: list, encoding: str = "utf-8") -> Dict[str, Any]:
@@ -198,9 +202,13 @@ def modify_file(file_path: str, start_line: int, end_line: int, start_line_conte
                 result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.LIGHTBLACK_EX}--{parent}{Style.RESET_ALL} {Fore.GREEN}+{new_count}{Style.RESET_ALL} {Fore.RED}-{old_count}{Style.RESET_ALL}"}
             else:
                 result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.GREEN}+{new_count}{Style.RESET_ALL} {Fore.RED}-{old_count}{Style.RESET_ALL}"}
+        else:
+            filename = Path(file_path).name
+            result["user_output"] = {"label": "File Change", "content": f"{filename} {Fore.RED}Error{Style.RESET_ALL}"}
         return result
     except Exception as e:
-        return {"error": f"修改文件失败: {str(e)}"}
+        filename = Path(file_path).name
+        return {"error": f"修改文件失败: {str(e)}", "user_output": {"label": "File Change", "content": f"{filename} {Fore.RED}Error{Style.RESET_ALL}"}}
 
 
 def delete_file(file_path: str, confirmed: bool = False) -> Dict[str, Any]:
@@ -228,6 +236,10 @@ def delete_file(file_path: str, confirmed: bool = False) -> Dict[str, Any]:
             full_path = result.get("file_path", file_path)
             filename = Path(full_path).name
             result["user_output"] = {"label": "File Change", "content": f"--{filename} {Fore.RED}Delet{Style.RESET_ALL}"}
+        else:
+            filename = Path(file_path).name
+            result["user_output"] = {"label": "File Change", "content": f"--{filename} {Fore.RED}Error{Style.RESET_ALL}"}
         return result
     except Exception as e:
-        return {"error": f"删除文件失败: {str(e)}"}
+        filename = Path(file_path).name
+        return {"error": f"删除文件失败: {str(e)}", "user_output": {"label": "File Change", "content": f"--{filename} {Fore.RED}Error{Style.RESET_ALL}"}}

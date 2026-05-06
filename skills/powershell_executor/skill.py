@@ -76,10 +76,14 @@ def run_script(script: str, timeout: int = None, wait_time: int = None) -> Dict[
         if script_length > MAX_SCRIPT_LENGTH:
             if log:
                 log.warning(f"脚本过长: {script_length} 字符，最大允许: {MAX_SCRIPT_LENGTH} 字符")
+            short_preview = script.split('\n')[0][:80]
+            if len(script.split('\n')[0]) > 80:
+                short_preview += "..."
             return {
                 "error": f"脚本过长: {script_length} 字符，最大允许: {MAX_SCRIPT_LENGTH} 字符",
                 "script_length": script_length,
-                "max_length": MAX_SCRIPT_LENGTH
+                "max_length": MAX_SCRIPT_LENGTH,
+                "user_output": {"label": "Run", "content": f"--{short_preview} {Fore.RED}Error{Style.RESET_ALL}"}
             }
 
         actual_timeout = timeout if timeout is not None else 30
@@ -118,7 +122,10 @@ def run_script(script: str, timeout: int = None, wait_time: int = None) -> Dict[
     except Exception as e:
         if log:
             log.error(f"运行脚本失败: {str(e)}")
-        return {"error": f"运行脚本失败: {str(e)}"}
+        short_preview = script.split('\n')[0][:80]
+        if len(script.split('\n')[0]) > 80:
+            short_preview += "..."
+        return {"error": f"运行脚本失败: {str(e)}", "user_output": {"label": "Run", "content": f"--{short_preview} {Fore.RED}Error{Style.RESET_ALL}"}}
 
 
 async def check_script(command_id: str, wait_time: int = None) -> Dict[str, Any]:

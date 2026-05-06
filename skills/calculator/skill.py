@@ -39,7 +39,8 @@ def calculate(expression: str) -> Dict[str, Any]:
     if not HAS_SYMPY:
         return {
             "success": False,
-            "error": "sympy 未安装，请运行 pip install sympy"
+            "error": "sympy 未安装，请运行 pip install sympy",
+            "user_output": {"label": "Calculator", "content": f"{Fore.LIGHTBLACK_EX}{expression}{Style.RESET_ALL} {Fore.RED}Error{Style.RESET_ALL}"}
         }
 
     try:
@@ -60,12 +61,14 @@ def calculate(expression: str) -> Dict[str, Any]:
     except SympifyError:
         return {
             "success": False,
-            "error": f"无法解析表达式: {expression}"
+            "error": f"无法解析表达式: {expression}",
+            "user_output": {"label": "Calculator", "content": f"{Fore.LIGHTBLACK_EX}{expression}{Style.RESET_ALL} {Fore.RED}Error{Style.RESET_ALL}"}
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"计算失败: {str(e)}"
+            "error": f"计算失败: {str(e)}",
+            "user_output": {"label": "Calculator", "content": f"{Fore.LIGHTBLACK_EX}{expression}{Style.RESET_ALL} {Fore.RED}Error{Style.RESET_ALL}"}
         }
 
 

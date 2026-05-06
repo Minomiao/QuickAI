@@ -76,6 +76,12 @@ def random_float(min: float, max: float) -> Dict[str, Any]:
 
 
 def random_choice(choices: List[str]) -> Dict[str, Any]:
+    if not choices:
+        return {
+            "success": False,
+            "error": "选项列表不能为空",
+            "user_output": {"label": "Random", "content": f"--choices {Fore.RED}Error{Style.RESET_ALL}"}
+        }
     value = random.choice(choices)
     preview = choices[:3]
     options_str = ", ".join(preview)
@@ -111,7 +117,7 @@ def random_password(
         charset += special
 
     if not charset:
-        return {"success": False, "error": "至少需要选择一种字符类型"}
+        return {"success": False, "error": "至少需要选择一种字符类型", "user_output": {"label": "Random", "content": f"--password {Fore.LIGHTBLACK_EX}({length}){Style.RESET_ALL} {Fore.RED}Error{Style.RESET_ALL}"}}
 
     password = []
     for _ in range(length):
