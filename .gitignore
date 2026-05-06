@@ -25,7 +25,6 @@ workplace/
 test.py
 *.log
 .venv/
-FEATURES.md
 venv/
 ENV/
 env/

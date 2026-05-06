@@ -60,9 +60,9 @@ python main.py
 | `/saveas [name]` | 保存当前对话 |
 | `/list` | 列出所有已保存的对话 |
 | `/tools` | 查看可用工具列表 |
-| `/skills` | 查看可用技能列表 |
+| `/skills` | 查看并管理各项技能的启用/禁用状态 |
 | `/toggle` | 切换工具启用/禁用 |
-| `/skill` | 管理各项技能的启用/禁用状态 |
+| `/showthinking` | 显示/隐藏 AI 思考过程 (on/off) |
 | `/quit` | 退出程序 |
 
 输入以上命令之外的任何内容，将直接发送给 AI（以命令前缀开头的输入除外，见下）。
@@ -175,9 +175,9 @@ chat_stream()
   │     │
   │     └── messages.extend(tool_responses)
   │
-  └── 第3轮: 工具调用迭代 (max 10 次)
+  └── 第3轮: 工具调用迭代 (max 20 次)
         │
-        │  while iteration < 10:
+        │  while iteration < 20:
         │    ├── 重新调用 API (messages 含 tool_results)
         │    ├── _process_stream(stream)  ← 复用同一方法
         │    ├── 有 tool_calls? → 继续迭代
@@ -331,6 +331,7 @@ modules/backup_manager.py   # 对话级文件备份与恢复
 modules/commands.py         # 命令管理（前缀化、关键词校验、启动自动修复）
 modules/conversation.py     # 对话历史保存与加载
 modules/logger.py           # 日志系统
+modules/powershell_manager.py  # PowerShell 子进程管理（执行、轮询、终止、清理）
 modules/mcp_manager.py      # MCP 协议管理器
 ```
 
@@ -344,7 +345,8 @@ Request Manager 处理**不需要用户交互**的内部请求，需用户交互
 |----------|----------|------|
 | `USER_INPUT` | chat.py | 阻塞等待用户输入 |
 | `CONFIRMATION` | chat.py | 阻塞等待 y/n 确认 |
-| `SKILL_CONFIRMATION` | chat.py | 确认后执行（PowerShell 直执行） |
+| `requires_confirmation` | chat.py | 技能确认（delete/run_script 等），确认后自动二次调用 |
+| `CONSOLE_OUTPUT` | chat.py → callback | AI 可直接向终端输出信息（错误/警告/普通） |
 | `PROMPT_REQUEST` | request_manager → prompt_manager | 获取系统提示 |
 | `FILE_OPERATION` | request_manager → file_operation | 文件读写 |
 | `CONFIG_REQUEST` | request_manager → config | 读/写配置 |
@@ -496,6 +498,9 @@ def my_function(param1: str):
   "base_url": "https://api.deepseek.com",
   "model": "deepseek-v4-flash",
   "max_tokens": 8192,
+  "command_prefix": "/",
+  "reasoning": true,
+  "show_thinking": false,
   "skills": {},
   "plugins": {}
 }
