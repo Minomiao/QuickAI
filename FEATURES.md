@@ -25,8 +25,10 @@
   - 多轮对话历史
 - [x] System prompt with workspace context
   - 包含工作区上下文的系统提示词
-- [x] Tool call iteration loop (max 20 rounds)
-  - 工具调用迭代循环（最多 20 轮）
+- [x] Plain text output mode (no markdown, no emoji)
+  - 纯文本输出模式（无 markdown、无表情符号）
+- [x] Tool call iteration loop (initial 30 rounds, extendable +20 on user confirm, hard limit 100)
+  - 工具调用迭代循环（初始 30 轮，用户确认后每次续期 +20，硬上限 100）
 - [x] Configurable max_tokens, temperature
   - 可配置的 max_tokens、temperature
 
@@ -271,8 +273,8 @@
   - 工具参数解析中的 JSON 解码错误处理
 - [x] Tool execution error wrapping (never crash on bad tool)
   - 工具执行错误包装（错误工具不会导致崩溃）
-- [x] Max iteration guard (20 rounds)
-  - 最大迭代保护（20 轮）
+- [x] Max iteration guard (30 rounds, extendable to 100)
+  - 最大迭代保护（30 轮，可续期至 100）
 - [x] PowerShell timeout and output truncation
   - PowerShell 超时和输出截断
 - [x] PowerShell async subprocess transport cleanup (_DummySock pattern)

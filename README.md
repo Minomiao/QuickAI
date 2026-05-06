@@ -175,15 +175,16 @@ chat_stream()
   │     │
   │     └── messages.extend(tool_responses)
   │
-  └── 第3轮: 工具调用迭代 (max 20 次)
+  └── 第3轮: 工具调用迭代 (初始 30 次，每次续期 +20，上限 100)
         │
-        │  while iteration < 20:
+        │  while iteration < max_iterations:
         │    ├── 重新调用 API (messages 含 tool_results)
         │    ├── _process_stream(stream)  ← 复用同一方法
         │    ├── 有 tool_calls? → 继续迭代
-        │    └── 无 tool_calls? → break
-        │
-        └── 达到 max_iterations → callback('max_iterations_reached')
+        │    ├── 无 tool_calls? → break
+        │    └── iteration >= max_iterations? → 询问用户是否续期
+        │          ├── y → max_iterations += 20，继续迭代 (上限 100)
+        │          └── n / 达到 100 → 静默结束
 ```
 
 ### 3. 回调系统：chat_callback()
@@ -438,6 +439,8 @@ Dolphin 使用流式输出，终端实时展示：
 - **思考过程**：暗色文字逐字输出
 - **回复内容**：正常颜色逐字输出（打字机效果）
 - **工具调用与结果**：蓝色/绿色标识
+
+系统提示词要求 AI 使用纯文本输出（无 Markdown 格式、无表情符号），使用自然语言和空格缩进来表达结构。
 
 ---
 

@@ -418,8 +418,11 @@ def chat_callback(event_type, data):
         else:
             print(f"\n{Fore.GREEN}信息: {content}{Style.RESET_ALL}")
     elif event_type == 'max_iterations_reached':
-        print(f"\n⚠️  注意: 已达到最大工具调用迭代次数 ({data['iterations']} 次)")
-        print("如果任务未完成，请继续对话以继续执行。")
+        current_iterations = data.get('iterations', 0)
+        hard_limit = data.get('hard_limit', 100)
+        remaining = hard_limit - current_iterations
+        print(f"\n{Fore.YELLOW}工具调用已达 {current_iterations} 次 (上限 {hard_limit} 次，剩余 {remaining} 次){Style.RESET_ALL}")
+        return input("是否继续对话? (y/n): ").lower()
 
 async def main():
     global current_config, chat_instance, current_conversation, show_thinking

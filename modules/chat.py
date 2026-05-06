@@ -146,7 +146,7 @@ class QuickAIChat:
         else:
             #  fallback to default prompt
             directory_structure = self.get_directory_structure()
-            default_prompt = f"你是一个AI助手。当用户要求完成任务时，必须确保完成所有必要的步骤，不要中途停止。重要限制：每次只能调用一个工具（skill），等待工具返回结果后，再决定是否需要调用下一个工具。不要同时调用多个工具。重要：在每次回答结束时，必须至少给出一个正常的输出（除了思考过程和工具调用之外的内容），让用户知道发生了什么。始终以完整的回答结束对话。重要：你的所有输出都将显示在终端中，因此请使用纯文本格式输出，不要使用Markdown格式（如 **粗体**、*斜体*、# 标题、- 列表、`代码块`、```代码围栏```、表格、> 引用等），使用自然语言和空格缩进来表达结构和层级。当前工作目录：{self.current_work_directory}。所有文件操作都在此目录下进行，可以使用子文件夹路径，例如 'subdir/file.txt' 或 'subdir1/subdir2/file.txt'。如果需要切换工作目录，请使用 file_manager 技能的 set_work_directory 函数。切换后的工作目录仅在当前对话有效，下次对话开始时会恢复为此目录。\n\n当前工作目录的文件结构：\n{directory_structure}"
+            default_prompt = f"你是一个AI助手。当用户要求完成任务时，必须确保完成所有必要的步骤，不要中途停止。重要限制：每次只能调用一个工具（skill），等待工具返回结果后，再决定是否需要调用下一个工具。不要同时调用多个工具。重要：在每次回答结束时，必须至少给出一个正常的输出（除了思考过程和工具调用之外的内容），让用户知道发生了什么。始终以完整的回答结束对话。重要：你的所有输出都将显示在终端中，因此请使用纯文本格式输出，不要使用Markdown格式（如 **粗体**、*斜体*、# 标题、- 列表、`代码块`、```代码围栏```、表格、> 引用等），使用自然语言和空格缩进来表达结构和层级。不要输出表情符号（如 emoji）。当前工作目录：{self.current_work_directory}。所有文件操作都在此目录下进行，可以使用子文件夹路径，例如 'subdir/file.txt' 或 'subdir1/subdir2/file.txt'。如果需要切换工作目录，请使用 file_manager 技能的 set_work_directory 函数。切换后的工作目录仅在当前对话有效，下次对话开始时会恢复为此目录。\n\n当前工作目录的文件结构：\n{directory_structure}"
             return default_prompt
     
     def get_directory_structure(self) -> str:
@@ -569,17 +569,21 @@ class QuickAIChat:
             
             self.messages.extend(tool_responses)
             
-            max_iterations = 20
-            iteration = 0
-            
-            while iteration < max_iterations:
+            MAX_HARD_LIMIT = 100
+            INITIAL_MAX = 30
+            EXTEND_BY = 20
+
+            max_iterations = INITIAL_MAX
+            iteration = 1
+
+            while iteration < min(max_iterations, MAX_HARD_LIMIT):
                 iteration += 1
-                log.debug(f"工具调用迭代 {iteration}/{max_iterations}")
-                
+                log.debug(f"工具调用迭代 {iteration}/{max_iterations} (hard limit: {MAX_HARD_LIMIT})")
+
                 kwargs["messages"] = [{"role": "system", "content": system_message}] + self.messages
                 kwargs["stream"] = True
                 stream = self.client.chat.completions.create(**kwargs)
-                
+
                 full_response, full_reasoning, tool_calls_buffer, has_tool_calls = await self._process_stream(stream)
 
                 if full_reasoning:
@@ -588,7 +592,7 @@ class QuickAIChat:
                     tool_calls = list(tool_calls_buffer.values())
                     log.info(f"迭代 {iteration}: 检测到 {len(tool_calls)} 个工具调用")
                     self.add_message("assistant", full_response or "", tool_calls, reasoning_content=full_reasoning)
-                    
+
                     tool_responses = []
                     displayed_calls = []
                     displayed_results = []
@@ -598,26 +602,26 @@ class QuickAIChat:
                             arguments = json.loads(tc['function']['arguments'])
                         except:
                             arguments = {}
-                        
+
                         result = await self._execute_tool_sync(tool_name, arguments)
                         has_user_output = self._last_tool_had_user_output
-                        
+
                         result, skip = await self._process_tool_confirmation(result, tool_name, arguments)
                         has_user_output = has_user_output or self._last_tool_had_user_output
                         if skip:
                             tool_responses.append({"tool_call_id": tc['id'], "role": "tool", "content": result})
                             continue
-                        
+
                         tool_responses.append({
                             "tool_call_id": tc['id'],
                             "role": "tool",
                             "content": result
                         })
-                        
+
                         if not has_user_output:
                             displayed_calls.append(tc)
                             displayed_results.append((result, format_tool_result(result)))
-                    
+
                     if displayed_calls:
                         await self._call_callback('tool_calls', {
                             'calls': [
@@ -633,19 +637,28 @@ class QuickAIChat:
                                 'raw': raw,
                                 'formatted': formatted
                             })
-                    
+
                     self.messages.extend(tool_responses)
+
+                    if iteration >= max_iterations:
+                        if iteration >= MAX_HARD_LIMIT:
+                            break
+                        log.info(f"达到当前迭代上限 {max_iterations}，询问用户是否继续")
+                        result = await self._call_callback('max_iterations_reached', {
+                            'iterations': iteration,
+                            'max_iterations': max_iterations,
+                            'hard_limit': MAX_HARD_LIMIT
+                        })
+                        if result == 'y':
+                            max_iterations = min(max_iterations + EXTEND_BY, MAX_HARD_LIMIT)
+                            log.info(f"用户确认续期，新上限: {max_iterations}")
+                            continue
+                        else:
+                            log.info("用户选择不继续迭代")
+                            break
                     continue
                 else:
                     break
-            
-            if iteration >= max_iterations:
-                log.warning(f"达到最大工具调用迭代次数: {max_iterations}")
-                await self._call_callback('max_iterations_reached', {
-                    'iterations': max_iterations
-                })
-                if not full_response:
-                    full_response = f"已达到最大工具调用迭代次数 ({max_iterations} 次)。如果任务未完成，请继续对话以继续执行。"
         
         # 结束对话备份
         if self.backup_mgr:
