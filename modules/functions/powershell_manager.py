@@ -266,7 +266,8 @@ async def _read_stream(stream: asyncio.StreamReader, buffer: list, max_chars: in
     while total < max_chars:
         try:
             line = await stream.readline()
-        except Exception:
+        except Exception as e:
+            log.warning(f"读取进程输出流失败: {e}")
             break
         if not line:
             break

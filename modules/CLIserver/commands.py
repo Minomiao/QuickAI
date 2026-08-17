@@ -96,8 +96,10 @@ def _get_prefix():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
             return config_data.get("command_prefix", "/")
-        except Exception as e:
-            log.debug(f"读取命令前缀失败: {e}")
+        except json.JSONDecodeError as e:
+            log.debug(f"命令前缀配置格式错误: {e}")
+        except (FileNotFoundError, PermissionError, OSError) as e:
+            log.debug(f"读取命令前缀配置失败: {e}")
     return "/"
 
 
@@ -108,7 +110,10 @@ def _validate_commands():
     try:
         with open(app_paths.COMMANDS_FILE, 'r', encoding='utf-8') as f:
             file_data = json.load(f)
-    except Exception as e:
+    except json.JSONDecodeError as e:
+        log.warning(f"命令文件格式错误，跳过校验: {e}")
+        return
+    except (FileNotFoundError, PermissionError, OSError) as e:
         log.warning(f"读取命令文件失败，跳过校验: {e}")
         return
 
@@ -153,7 +158,9 @@ def load_commands():
                 file_data = json.load(f)
             for key, info in file_data.get("commands", {}).items():
                 keywords[key] = info.get("input", key)
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            log.warning(f"命令文件格式错误: {e}")
+        except (FileNotFoundError, PermissionError, OSError) as e:
             log.warning(f"读取命令文件失败: {e}")
 
     defaults = _get_default_commands()
@@ -172,7 +179,10 @@ def save_commands(prefix=None):
             try:
                 with open(app_paths.CONFIG_FILE, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
-            except Exception as e:
+            except json.JSONDecodeError as e:
+                log.warning(f"配置文件格式错误: {e}")
+                config_data = {}
+            except (FileNotFoundError, PermissionError, OSError) as e:
                 log.warning(f"读取配置文件失败: {e}")
                 config_data = {}
         else:
@@ -190,7 +200,9 @@ def save_commands(prefix=None):
             with open(app_paths.COMMANDS_FILE, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
             existing_commands = existing_data.get("commands", {})
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            log.warning(f"现有命令文件格式错误: {e}")
+        except (FileNotFoundError, PermissionError, OSError) as e:
             log.warning(f"读取现有命令文件失败: {e}")
 
     defaults = _get_default_commands()

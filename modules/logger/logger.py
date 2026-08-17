@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 from modules import bootstrap as app_paths
 
 
@@ -19,10 +19,12 @@ def setup_logger(name="Dolphin", level=logging.DEBUG):
     if logger.handlers:
         return logger
 
-    log_filename = datetime.now().strftime("%Y-%m-%d") + ".log"
-    log_filepath = os.path.join(app_paths.LOG_DIR, log_filename)
+    log_filepath = os.path.join(app_paths.LOG_DIR, "dolphin.log")
 
-    file_handler = logging.FileHandler(log_filepath, encoding='utf-8')
+    # 按天轮转：跨天自动切换文件，旧日志保留 backupCount 份
+    file_handler = TimedRotatingFileHandler(
+        log_filepath, when="midnight", encoding='utf-8', backupCount=7
+    )
     file_handler.setLevel(level)
 
     formatter = logging.Formatter(
@@ -47,10 +49,11 @@ def get_thinking_logger():
         _thinking_logger = logging.getLogger("Dolphin.thinking")
         _thinking_logger.setLevel(logging.DEBUG)
 
-        think_filename = "think_" + datetime.now().strftime("%Y-%m-%d") + ".log"
-        think_filepath = os.path.join(app_paths.LOG_DIR, think_filename)
+        think_filepath = os.path.join(app_paths.LOG_DIR, "think.log")
 
-        think_handler = logging.FileHandler(think_filepath, encoding='utf-8')
+        think_handler = TimedRotatingFileHandler(
+            think_filepath, when="midnight", encoding='utf-8', backupCount=7
+        )
         think_handler.setLevel(logging.DEBUG)
         think_handler.setFormatter(logging.Formatter('[%(asctime)s] 思考过程:\n%(message)s'))
 

@@ -20,6 +20,8 @@ _STOP_WORDS_FILE = os.path.join(os.path.dirname(__file__), "stop_words.txt")
 _USER_DICT_FILE = os.path.join(os.path.dirname(__file__), "user_dict.txt")
 _STOP_WORDS: Set[str] = set()
 
+log = logging.getLogger("Dolphin.web_search")
+
 
 def _load_stop_words() -> Set[str]:
     """从 stop_words.txt 加载停用词表。"""
@@ -35,8 +37,10 @@ def _load_stop_words() -> Set[str]:
                     # 跳过空行和注释
                     if line and not line.startswith('#'):
                         _STOP_WORDS.add(line.lower())
-    except Exception:
-        pass
+    except FileNotFoundError:
+        pass  # 停用词文件不存在属正常，直接使用默认空表
+    except (OSError, UnicodeDecodeError) as e:
+        log.warning(f"读取停用词文件失败: {e}")
 
     # 确保至少有基本停用词（文件不存在时的兜底）
     if not _STOP_WORDS:
