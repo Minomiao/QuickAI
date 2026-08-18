@@ -1,10 +1,10 @@
-"""request_manager #23 修复单元测试。
+"""request_manager 单元测试。
 
 验证：
 - _run_async 无运行 loop 时走 asyncio.run，有运行 loop 时复用共享线程池
 - _run_async 超时抛出 TimeoutError，且共享池线程数受控（最多 1 个）
 - handle_request 已移除 callback 死参数
-- logger get 请求返回名称而非 Logger 对象（可 JSON 序列化）
+- 幽灵队列与未接线请求类型已清理（create_* 不再累积、死方法已删除）
 
 运行方式（在项目根目录执行）：
     venv\\Scripts\\python.exe -m unittest tests.unit.test_request_manager -v
@@ -77,15 +77,26 @@ class TestHandleRequest(unittest.TestCase):
         req = {"type": RequestType.USER_INPUT, "prompt": "hi"}
         self.assertEqual(self.mgr.handle_request(req), req)
 
-    def test_logger_get_returns_name_not_object(self):
-        result = self.mgr.handle_request({
-            "type": RequestType.LOGGER_REQUEST,
-            "operation_type": "get",
-            "name": "Dolphin.test",
-        })
-        self.assertTrue(result["success"])
-        self.assertEqual(result["name"], "Dolphin.test")
-        self.assertNotIn("logger", result)
+    def test_skill_confirmation_passthrough(self):
+        req = {"type": RequestType.SKILL_CONFIRMATION, "requires_confirmation": True,
+               "message": "确认删除", "action": "delete"}
+        self.assertEqual(self.mgr.handle_request(req), req)
+
+    def test_create_requests_keep_no_pending_queue(self):
+        # 幽灵队列已移除：create_* 只构造返回，不再累积待处理列表
+        self.mgr.create_user_input_request("提问")
+        self.assertFalse(hasattr(self.mgr, "pending_requests"))
+
+    def test_unwired_request_types_removed(self):
+        # 未接线的 config/logger/skill/console 请求链路已删除
+        for name in ("create_config_request", "create_logger_request",
+                     "create_skill_request", "create_console_output",
+                     "create_confirmation_request", "get_pending_requests",
+                     "clear_pending_requests"):
+            self.assertFalse(hasattr(self.mgr, name), f"{name} 应为死代码已删除")
+        for name in ("CONFIG_REQUEST", "LOGGER_REQUEST", "SKILL_REQUEST",
+                     "CONSOLE_OUTPUT", "USER_OUTPUT"):
+            self.assertFalse(hasattr(RequestType, name), f"RequestType.{name} 应已删除")
 
 
 if __name__ == "__main__":
