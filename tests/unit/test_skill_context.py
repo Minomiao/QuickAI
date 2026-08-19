@@ -40,7 +40,7 @@ class FakeRequestManager:
     def create_file_operation_request(self, operation, **kwargs):
         return {"operation": operation, **kwargs}
 
-    def handle_request(self, req, _):
+    def handle_request(self, req):
         self.file_ops.append(req)
         return {"success": True, "operation": req["operation"]}
 
