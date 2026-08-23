@@ -1,122 +1,48 @@
-# dolphincode
+# Dolphin CLI
 
-基于大语言模型的代码智能体（Code Agent），通过技能（Skills）和插件（Plugins）系统扩展 AI 能力，支持工具调用、对话管理、文件操作和用户交互。
-
-***
+基于大语言模型的代码智能体。通过技能、标准技能和插件扩展能力，支持工具调用、对话管理、文件操作与用户交互。
 
 ## 快速开始
 
-### 1. 安装依赖
-
 ```bash
-pip install -r requirements.txt
-```
-
-### 2. 运行
-
-```bash
+pip install -r requirements.txt   # 依赖装入项目 venv/
 python main.py
 ```
 
-首次运行自动创建 `workplace/` 工作目录、`date/config.json` 和 `date/.env`。按提示配置 API 密钥和模型即可开始使用。
+首次运行会自动创建 `workplace/` 工作目录、`date/config.json` 与 `date/.env`，按提示配置 API 密钥和模型即可开始使用；旧版配置中的敏感数据会自动迁移到 `.env` 并清除。
 
-### 配置文件
+模型通过 `/model` 切换，也可添加自定义模型。内置 deepseek-v4-flash 与 deepseek-v4-pro 两个模型，前者侧重快速响应，后者侧重高质量输出；已废弃模型启动时会给出警告。
 
-| 文件                 | 内容            | 管理方式                    |
-| ------------------ | ------------- | ----------------------- |
-| `date/.env`        | API 密钥、工作目录   | `/model`、`/workdir` 命令 |
-| `date/config.json` | 模型、命令前缀、技能开关等 | `/set` 命令               |
+## 基本使用
 
-旧版 `config.json` 中的敏感数据会自动迁移到 `.env` 并清除。
+所有命令共用可配置前缀，默认 `/`，可用 `/set` 修改：
 
-***
+| 命令                                | 作用                       |
+| --------------------------------- | ------------------------ |
+| `/model` `/workdir` `/language`   | 切换模型与 API 密钥、工作目录、界面语言   |
+| `/new` `/load` `/list` `/clear`   | 对话的新建、加载、列表、清空           |
+| `/tools` `/skills` `/toggle`      | 查看与开关工具、技能               |
+| `/effort fine\|normal\|high`      | AI 思考深度，默认 `fine`，切换后持久化 |
+| `/showthinking on\|off`           | 显示/隐藏思考过程                |
+| `/set` `/changes` `/help` `/quit` | 设置、处理备份变更、帮助、退出          |
 
-## 支持的模型
+`/effort` 三档对应不同行为约束。`/language` 支持 40 种语言，翻译表首次运行同步到 `date/language/`，可直接编辑自定义。
 
-| 模型                | 说明    |
-| ----------------- | ----- |
-| deepseek-v4-flash | 快速响应  |
-| deepseek-v4-pro   | 高质量输出 |
+## 技能与扩展
 
-已废弃模型启动时会显示警告及剩余天数，可通过 `/model` 切换。
+**内置技能**位于 `skills/`，共 9 个：calculator、file\_reader、file\_manager、git、memory\_manager、powershell\_executor、random\_generator、stdskill\_helper、web\_search，覆盖数学计算与时间、文件搜索读写、版本控制、跨会话记忆、PowerShell 异步执行、随机数生成、标准技能管理与网络搜索。
 
-***
+**标准技能**位于 `stdskills/`，遵循 Agent Skills 标准的 SKILL.md / skill.yaml 格式，启动时自动注册为 `stdskill_<名称>` 工具，新技能重启后生效。stdskill\_helper 提供 `create_skill` 创建、`install_skill` 从外部合集导入、`list_skills` 列出已装技能；项目自带 skill-installer 指南技能。
 
-## 命令列表
+**插件**位于 `plugins/`，以 ZIP 包形式存放，含 manifest.json 声明技能信息，启动时自动加载。
 
-| 命令                      | 说明                  |
-| ----------------------- | ------------------- |
-| `/help`                 | 显示帮助信息              |
-| `/set`                  | 设置模式（Token 数、命令前缀等） |
-| `/back`                 | 返回上一级界面             |
-| `/model`                | 切换模型和配置 API 密钥      |
-| `/language`             | 选择显示语言（支持 40 种）     |
-| `/workdir [path]`       | 打开/切换工作目录           |
-| `/clear`                | 清空对话历史              |
-| `/new [name]`           | 创建新对话               |
-| `/load [name]`          | 加载已保存的对话            |
-| `/list`                 | 列出所有已保存对话           |
-| `/tools`                | 查看可用工具列表            |
-| `/skills`               | 管理技能启用/禁用           |
-| `/toggle`               | 切换工具启用/禁用           |
-| `/showthinking on\|off` | 显示/隐藏思考过程           |
-| `/effort [fine\|normal\|high]` | 设置 AI 思考深度，无参数显示当前 |
-| `/changes`              | 处理待应用的备份变更         |
-| `/quit`                 | 退出程序                |
+## 安全机制
 
-所有命令共用可配置的前缀（默认 `/`），通过 `/set` 修改。
-
-### 思考深度
-
-通过 `/effort` 命令调整 AI 的工作模式，影响系统提示词中的行为约束：
-
-| 级别 | 命令 | 说明 |
-| --- | --- | --- |
-| **精简** | `/effort fine` | 只修改与任务直接相关内容，审视必要性和最小改动方案，优先复用现有功能 |
-| **标准** | `/effort normal` | 不确定时向用户询问，使用 `plugin_user_input_request_user_input` 工具 |
-| **深度** | `/effort high` | 全面考虑每个细节，不确定时询问，完成后审视逻辑正确性和边界情况 |
-
-默认 `fine`，切换后持久化到 `config.json`，启动时自动恢复。
-
-### 多语言
-
-通过 `/language` 命令选择界面语言，支持 40 种语言（含文言文、喵喵语）。翻译表内置于代码中，首次运行会同步到 `date/language/{code}.json`，可直接编辑文件自定义文案。
-
-***
-
-## 内置技能
-
-位于 `skills/` 目录，共 8 个：
-
-| 技能                       | 功能                     | 工具                                                                  |
-| ------------------------ | ---------------------- | ------------------------------------------------------------------- |
-| **calculator**           | 数学表达式求值、获取时间           | `calculate`, `get_current_time`                                     |
-| **file\_reader**         | 文件搜索、目录浏览、内容阅读         | `get_work_directory`, `search_files`, `list_directory`, `read_file` |
-| **file\_manager**        | 文件创建、修改、删除、切换目录        | `set_work_directory`, `create_file`, `modify_file`, `delete_file`   |
-| **git**                  | Git 版本控制（初始化、暂存、提交、查看状态/历史），创建 `.gitignore` 时自动同步 `.dpc` 屏蔽规则 | `git_init`, `git_status`, `git_diff`, `git_add`, `git_commit`, `git_log`, `create_gitignore` |
-| **memory\_manager**      | 跨会话项目记忆（正文存独立文档，索引存 `Dmemory/index.json`） | `write_memory`, `search_memory`, `get_memory`, `list_memory`, `delete_memory` |
-| **powershell\_executor** | PowerShell 脚本异步执行（需确认） | `run_script`, `check_script`, `kill_command`                        |
-| **random\_generator**    | 随机数、随机选择、密码生成          | `random_int`, `random_float`, `random_choice`, `random_password`    |
-| **web\_search**          | Bing 网络搜索 (jieba 关键字相关性过滤) | `search`, `fetch`                                                |
-
-### 安全机制
-
-- **确认保护**：`delete_file` 和 `run_script` 执行前需用户 y/n 确认
-- **DPC 文件保护**：`.dpc` 文件控制目录访问权限，保护程序数据不被 AI 读取
-- **工作目录隔离**：AI 操作限制在配置的工作目录内，支持子目录切换
-- **文件备份**：修改前自动备份到 `date/backup/`，退出时可选择应用/还原
-- **记忆库保护**：`Dmemory/` 记忆文件夹自动加入 `.dpc` 屏蔽规则（含子路径），只能通过 memory_manager 技能读写
-
-***
-
-## 插件系统
-
-插件以 ZIP 格式存放在 `plugins/` 目录，启动时自动加载。需包含 `manifest.json` 声明技能信息和入口点。
+- 破坏性操作需确认：`delete_file`、`run_script`
+- `.dpc` 文件控制目录访问权限，保护程序数据；`Dmemory/` 记忆库自动纳入屏蔽
+- AI 操作被限制在工作目录内，文件修改前自动备份到 `date/backup/`，退出时可选择应用或还原
+- `run_script` 内置危险命令黑名单，可疑脚本需人工确认
 
 ## 许可证
 
 MIT License
-
-### 首次启动：Embedding 模型下载
-
-web_search 技能首次使用时，程序会自动从 hf-mirror 下载 BAAI/bge-small-zh-v1.5 语义向量模型（约 95MB），并自动转换为 ONNX 格式以加速推理。模型存储在 `models/` 目录，下载过程有 Rich 进度条提示。整个过程仅在首次启动时执行一次。
