@@ -267,8 +267,10 @@ def install_skill(context, source: str) -> Dict[str, Any]:
             pass
 
         # 定位所有技能定义文件：单个技能文件夹直接命中，合集/整包递归查找
+        # 注意：文件系统上文件名可能大小写混合，比较时统一转小写
+        _definition_lower = {f.lower() for f in _DEFINITION_FILES}
         candidate_files = [p for p in src.rglob("*")
-                           if p.is_file() and p.name.lower() in _DEFINITION_FILES]
+                           if p.is_file() and p.name.lower() in _definition_lower]
         if not candidate_files:
             return _err(context, f"来源中未找到任何技能定义文件 (SKILL.md / skill.yaml / skill.yml): {src}")
 
