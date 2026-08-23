@@ -2,6 +2,7 @@
 
 验证 call_tool 返回的 user_output 使用规范 parts 格式（而非 content 兼容变体）。
 """
+import asyncio
 import os
 import sys
 import tempfile
@@ -31,7 +32,7 @@ class TestStandardSkillUserOutput(unittest.TestCase):
 
     def test_call_tool_user_output_uses_parts(self):
         with patch.object(self.loader, "_resolve_skill_name", return_value=("demo", None)):
-            result = self.loader.call_tool("stdskill_demo", {})
+            result = asyncio.run(self.loader.call_tool("stdskill_demo", {}))
         self.assertTrue(result["success"])
         self.assertEqual(result["user_output"]["label"], "skills")
         self.assertEqual(result["user_output"]["parts"], [{"text": "demo"}])

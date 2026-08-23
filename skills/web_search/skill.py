@@ -262,6 +262,7 @@ def search(context, query: str, num_results: int = None) -> Dict[str, Any]:
 
         if not raw_results:
             return {
+                "success": True,
                 "query": query,
                 "results": [],
                 "user_output": {"label": "Search", "parts": [{"text": f'"{query}"'}, {"text": "- 0 results", "style": "gray"}]}
@@ -283,6 +284,7 @@ def search(context, query: str, num_results: int = None) -> Dict[str, Any]:
             final_results.extend(irrelevant_results[:remaining])
 
         return {
+            "success": True,
             "query": query,
             "results": final_results,
             "user_output": {"label": "Search", "parts": _build_user_output(query, final_results)}
