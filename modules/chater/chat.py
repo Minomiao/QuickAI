@@ -433,7 +433,8 @@ class DolphinChat:
                 if isinstance(uo, dict):
                     await self._call_callback('user_output', uo)
                 else:
-                    await self._call_callback('user_output', {'content': str(uo)})
+                    # 非结构化 user_output 统一包装为规范的 parts 格式
+                    await self._call_callback('user_output', {'parts': [{'text': str(uo)}]})
                 had_user_output = True
                 user_output = uo
 

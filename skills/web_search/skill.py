@@ -345,6 +345,7 @@ def fetch(context, url: str) -> Dict[str, Any]:
             text = text[:context.constants.MAX_WEB_CONTENT_LENGTH] + "..."
 
         return {
+            "success": True,
             "url": url,
             "title": title,
             "content": text,
