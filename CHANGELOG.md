@@ -1,5 +1,63 @@
 # Change Log
 
+## v1.2.1 (2026-08-24)
+
+Standard skills (Agent Skills) system, non-interactive chat caller, 400-line module refactoring, robustness fixes, and a growing unit test suite.
+
+### Standard Skills (Agent Skills)
+
++ Add standard skill loader for SKILL.md based skills (`defa79c`)
+  - Recursively scan `stdskills/`, register each skill as a `stdskill_<name>` tool
++ Add `skill-installer` standard skill and track `stdskills/` directory (`6619ea7`)
++ Add `stdskill_helper` native skill and align skill-installer with it (`e53d7b1`)
+  - Tools: `create_skill`, `install_skill`, `list_skills`
++ Support `skill.yaml` definitions and align calculator user output (`1de5f15`)
++ Show `[skills]` user output when a standard skill is called (`43f0399`)
++ Add user_output for recovered tool messages in conversation repair (`d92bf29`)
++ Fix: case-insensitive definition file matching in `install_skill` (`725004b`)
+
+### Module Refactoring
+
++ Split oversized modules to meet the 400-line rule (`ba8daa8`)
+  - Extract `backup_actions` from `backup_manager`, `prompt_defaults` from `prompt_manager`, new `registry` and `translations` modules
++ Extract `CommandCacheManager` into `command_cache` module (`2957b93`)
++ Slim down `request_manager` to wired functionality (`3b4d016`)
++ Replace `main_loop` command branches with a dispatch table (`d59dd29`)
++ Unify tool result structure (user_output parts format + success flag) (`e871b56`)
++ Improve `chat_stream` readability (`8acb74a`)
+
+### New Features
+
++ Add non-interactive `chat_ai` caller with tool whitelist and full result (`ae55c17`)
++ Merge `/load` and `/list` commands into an arrow-key conversation selector (`fbc67ce`)
+
+### Stability & Fixes
+
++ Fix: handle `CancelledError` race in PowerShell task timeout wait (`ea616a3`)
++ Include stderr in PowerShell command results (`cd8f5e6`)
++ Classify exceptions and add daily log rotation (`32a042d`)
++ Harden `file_operation` against cross-drive and oversized params (`cead656`)
++ Harden `request_manager` thread pool and drop dead callback (`c7b2c04`)
++ Harden skill security against injection and path traversal (`6f763f7`)
++ Remove dead code and fix content search regression (`780b49f`)
++ Fix: `record_change` updates the latest unconfirmed record (`6be6063`)
++ Centralize default model and harden edge cases (`f78d4d8`)
+
+### Testing
+
++ Add unit tests for core logic modules (`7551683`)
++ Add unit tests for recent robustness fixes (`b0035bc`)
++ Add command cache unit tests and fix `FakeRequestManager` signature (`e2ffb95`)
++ Add web_search unit tests (`172f673`)
+
+### Chore & Docs
+
++ Permanently ignore `tests/` and build output (`65abf2c`, `7acca49`)
++ Drop unused flask and flask-cors dependencies (`45846be`)
++ Refresh README to reflect the current project state (`a41564f`)
+
+---
+
 ## v1.2.0 (2026-08-07)
 
 Multi-language i18n with arrow-key navigation, two new skills (git, memory_manager), jieba-based web search, model management overhaul, and stability fixes.
