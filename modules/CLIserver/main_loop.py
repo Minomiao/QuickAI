@@ -4,6 +4,7 @@ import sys
 from colorama import Fore, Style
 
 from modules.logger import get_logger
+from modules.core.services import config_service
 from . import i18n
 from .state import ui, state
 from .callback import chat_callback, clear_tool_pending, rollback_last_message
@@ -134,14 +135,11 @@ def _cmd_showthinking(args):
     if arg not in ('on', 'off'):
         print(i18n.t("main.invalid_arg", arg=arg))
         return
-    target = (arg == 'on')
-    if state.show_thinking == target:
+    result = config_service.set_show_thinking(state, arg == 'on')
+    if not result.get('changed'):
         status = i18n.t("main.on") if state.show_thinking else i18n.t("main.off")
         print(i18n.t("main.thinking_already", status=status))
         return
-    state.show_thinking = target
-    state.current_config['show_thinking'] = target
-    state.config.save_config(state.current_config)
     status = i18n.t("main.on") if state.show_thinking else i18n.t("main.off")
     state.screen_refresh.refresh(
         print_header, print_conversation_history,
@@ -155,13 +153,9 @@ def _cmd_effort(args):
         # 无参数时进入上下键选择界面
         effort_settings()
         return
-    level = args.lower()
-    if level in ['normal', 'fine', 'high']:
-        state.effort_level = level
-        state.chat_instance.effort_level = level
-        state.current_config['effort_level'] = level
-        state.config.save_config(state.current_config)
-        print(i18n.t("main.effort_set", level=level))
+    result = config_service.set_effort_level(state, args.lower())
+    if result.get('success'):
+        print(i18n.t("main.effort_set", level=result['value']))
     else:
         print(i18n.t("main.effort_invalid"))
 

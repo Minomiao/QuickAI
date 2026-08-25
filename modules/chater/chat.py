@@ -14,6 +14,7 @@ from modules.loader import standard_skill_loader
 from modules.main_server.middleware import request_manager
 from modules.functions import backup_manager, powershell_manager
 from modules.bootstrap import constants
+from modules.core import events
 from modules.logger import get_logger, log_thinking
 
 log = get_logger("Dolphin.chat")
@@ -390,7 +391,7 @@ class DolphinChat:
         context_window = config.get_context_window(self.model)
         usage = self.context.check_context_usage(self.messages, context_window)
         # 每轮都发送 usage 信息（不再只在告警时发送）
-        await self._call_callback("context_usage", usage)
+        await self._call_callback(events.EVENT_CONTEXT_USAGE, usage)
     
     async def _call_callback(self, event_type, data):
         """调用回调函数，支持同步和异步回调"""
@@ -400,7 +401,7 @@ class DolphinChat:
                 return result
             else:
                 result = self.callback(event_type, data)
-                if event_type == 'tool_start':
+                if event_type == events.EVENT_TOOL_START:
                     await asyncio.sleep(0)
                 return result
         except Exception as e:
@@ -431,10 +432,10 @@ class DolphinChat:
             if isinstance(result, dict) and result.get("user_output"):
                 uo = result.pop("user_output")
                 if isinstance(uo, dict):
-                    await self._call_callback('user_output', uo)
+                    await self._call_callback(events.EVENT_USER_OUTPUT, uo)
                 else:
                     # 非结构化 user_output 统一包装为规范的 parts 格式
-                    await self._call_callback('user_output', {'parts': [{'text': str(uo)}]})
+                    await self._call_callback(events.EVENT_USER_OUTPUT, {'parts': [{'text': str(uo)}]})
                 had_user_output = True
                 user_output = uo
 
@@ -479,12 +480,12 @@ class DolphinChat:
             'input_type': result_dict.get('input_type'),
             'default_value': result_dict.get('default_value')
         }
-        user_input = await self._call_callback('user_input_required', input_data)
+        user_input = await self._call_callback(events.EVENT_USER_INPUT_REQUIRED, input_data)
         user_out_data = {'label': 'Input', 'parts': [
             {"text": result_dict.get('prompt', '')},
             {"text": user_input, "style": "gray"}
         ]}
-        await self._call_callback('user_output', user_out_data)
+        await self._call_callback(events.EVENT_USER_OUTPUT, user_out_data)
         return json.dumps({"success": True, "input": user_input}, ensure_ascii=False), False, user_out_data
 
     async def _handle_confirmation_request(self, result_dict: dict, tool_name: str, arguments: dict) -> tuple:
@@ -493,14 +494,14 @@ class DolphinChat:
             'action': result_dict.get('action'),
             'default': result_dict.get('default')
         }
-        confirm = await self._call_callback('confirmation_required', confirmation_data)
+        confirm = await self._call_callback(events.EVENT_CONFIRMATION_REQUIRED, confirmation_data)
         status_style = "green" if confirm == 'y' else "red"
         status_text = "已确认" if confirm == 'y' else "已取消"
         user_out_data = {'label': 'Confirm', 'parts': [
             {"text": result_dict.get('action', 'unknown')},
             {"text": status_text, "style": status_style}
         ]}
-        await self._call_callback('user_output', user_out_data)
+        await self._call_callback(events.EVENT_USER_OUTPUT, user_out_data)
         return json.dumps({"success": True, "confirmed": confirm == 'y'}, ensure_ascii=False), False, user_out_data
 
     async def _handle_requires_confirmation_request(self, result_dict: dict, tool_name: str, arguments: dict) -> tuple:
@@ -513,15 +514,15 @@ class DolphinChat:
             'work_directory': result_dict.get('work_directory'),
             'error': result_dict.get('error')
         }
-        confirm = await self._call_callback('confirmation_required', confirmation_data)
+        confirm = await self._call_callback(events.EVENT_CONFIRMATION_REQUIRED, confirmation_data)
 
         if confirm != 'y':
             log.info(f"用户取消操作: {tool_name}")
-            await self._call_callback('operation_canceled', {})
+            await self._call_callback(events.EVENT_OPERATION_CANCELED, {})
             return json.dumps({"error": "用户取消操作"}, ensure_ascii=False), True, None
 
         log.info(f"用户确认操作: {tool_name}")
-        await self._call_callback('operation_confirmed', {})
+        await self._call_callback(events.EVENT_OPERATION_CONFIRMED, {})
 
         if result_dict.get('action') == constants.ACTION_RUN_POWERSHELL_SCRIPT and result_dict.get('script'):
             ps_timeout = result_dict.get('timeout', 30)
@@ -587,7 +588,7 @@ class DolphinChat:
                 continue
 
             display_name = _parse_display_name(tool_name, self.skill_mgr, self.plugin_loader)
-            await self._call_callback('tool_start', {'name': display_name})
+            await self._call_callback(events.EVENT_TOOL_START, {'name': display_name})
 
             result, _, skill_uo = await self._execute_tool(tool_name, arguments)
             result, skip, conf_uo = await self._process_tool_confirmation(result, tool_name, arguments)
@@ -616,7 +617,7 @@ class DolphinChat:
         self._save_now()
 
         if displayed_calls:
-            await self._call_callback('tool_calls', {
+            await self._call_callback(events.EVENT_TOOL_CALLS, {
                 'calls': [
                     {
                         'name': tc['function']['name'],
@@ -626,7 +627,7 @@ class DolphinChat:
                 ]
             })
             for raw, formatted in displayed_results:
-                await self._call_callback('tool_result', {
+                await self._call_callback(events.EVENT_TOOL_RESULT, {
                     'raw': raw,
                     'formatted': formatted
                 })
@@ -733,7 +734,7 @@ class DolphinChat:
         if reasoning:
             log.debug(f"思考过程长度: {len(reasoning)}")
             log_thinking(reasoning)
-            await self._call_callback('thinking', {
+            await self._call_callback(events.EVENT_THINKING, {
                 'content': reasoning
             })
 
@@ -764,12 +765,12 @@ class DolphinChat:
                     reasoning = delta.model_extra.get('reasoning_content')
                     if reasoning:
                         if not reasoning_started:
-                            await self._call_callback('thinking_start', {})
+                            await self._call_callback(events.EVENT_THINKING_START, {})
                             reasoning_started = True
                         full_reasoning += reasoning
                         # 先储存后显示：思考块先写入流式缓冲
                         self._append_stream_chunk("thinking", reasoning)
-                        await self._call_callback('thinking_chunk', {
+                        await self._call_callback(events.EVENT_THINKING_CHUNK, {
                             'content': reasoning
                         })
 
@@ -779,11 +780,11 @@ class DolphinChat:
                     if not response_started:
                         response_started = True
                         if reasoning_started:
-                            await self._call_callback('thinking_end', {})
+                            await self._call_callback(events.EVENT_THINKING_END, {})
                             reasoning_started = False
                     # 先储存后显示：内容块先写入流式缓冲
                     self._append_stream_chunk("content", content)
-                    await self._call_callback('response_chunk', {
+                    await self._call_callback(events.EVENT_RESPONSE_CHUNK, {
                         'content': content
                     })
 
@@ -810,10 +811,10 @@ class DolphinChat:
 
         if reasoning_started:
             log.debug(f"思考过程长度: {len(full_reasoning)}")
-            await self._call_callback('thinking_end', {})
+            await self._call_callback(events.EVENT_THINKING_END, {})
 
         if response_started:
-            await self._call_callback('response_end', {})
+            await self._call_callback(events.EVENT_RESPONSE_END, {})
 
         return full_response, full_reasoning, tool_calls_buffer, has_tool_calls, last_usage
 
@@ -909,7 +910,7 @@ class DolphinChat:
                     if iteration >= MAX_HARD_LIMIT:
                         break
                     log.info(f"达到当前迭代上限 {max_iterations}，询问用户是否继续")
-                    result = await self._call_callback(constants.EVENT_MAX_ITERATIONS_REACHED, {
+                    result = await self._call_callback(events.EVENT_MAX_ITERATIONS_REACHED, {
                         'iterations': iteration,
                         'max_iterations': max_iterations,
                         'hard_limit': MAX_HARD_LIMIT

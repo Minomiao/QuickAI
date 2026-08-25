@@ -1,52 +1,22 @@
-"""设置模式、模型设置和工具切换界面。"""
+"""设置模式、模型设置和工具切换界面（业务操作委托 core.services）。"""
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
 from modules.logger import get_logger
 from modules.bootstrap import constants
+from modules.core.services import chat_service, config_service
 from . import i18n
 from .state import state
-from .screen_refresh import create_header_panel, create_footer_panel
+from .screen_refresh import create_header_panel
 
 log = get_logger("Dolphin.settings")
 _console = Console()
 
 
-def _rebuild_client_and_chat():
-    """根据当前配置重建 OpenAI 客户端和 chat 实例。"""
-    config = state.config
-    chat = state.chat
-
-    # 保留旧实例的消息，避免对话历史丢失
-    old_messages = []
-    if state.chat_instance is not None:
-        old_messages = state.chat_instance.messages
-
-    state.chat_instance = chat.DolphinChat(
-        model=state.current_config.get('model'),
-        max_tokens=state.current_config.get('max_tokens', 18000),
-        callback=_chat_callback_proxy
-    )
-    state.chat_instance.effort_level = state.effort_level
-    state.chat_instance.messages = old_messages
-    # 恢复保存目标，避免重建后自动保存失效导致退出丢失本轮消息
-    if state.current_dir_id and state.current_conv_id:
-        state.chat_instance.set_save_target(state.current_dir_id, state.current_conv_id)
-    log.info("客户端已更新")
-    print("客户端已更新")
-
-
-def _chat_callback_proxy(event_type, data):
-    """延迟解析的回调代理，避免循环导入。"""
-    from .callback import chat_callback
-    return chat_callback(event_type, data)
-
-
 def settings_mode():
     """进入设置界面（上下键选择配置项）。"""
     cmd = state.cmd
-    config = state.config
     log.info("进入设置模式")
 
     def _run_token():
@@ -61,22 +31,19 @@ def settings_mode():
 
         try:
             new_max_tokens = int(new_value)
-            if new_max_tokens < 1:
-                _console.print(f"[red]{i18n.t('settings.token_min')}[/red]")
-                input(i18n.t("main.press_enter"))
-                return
-            elif new_max_tokens > 200000:
-                _console.print(f"[red]{i18n.t('settings.token_max')}[/red]")
-                input(i18n.t("main.press_enter"))
-                return
-            state.current_config['max_tokens'] = new_max_tokens
-            config.save_config(state.current_config)
-            log.info(f"最大 Token 数已更改: {new_max_tokens}")
-            _console.print(f"[green]{i18n.t('settings.updated', value=new_max_tokens)}[/green]")
-            input(i18n.t("main.press_enter"))
         except ValueError:
             _console.print(f"[red]{i18n.t('settings.invalid_number')}[/red]")
             input(i18n.t("main.press_enter"))
+            return
+
+        result = config_service.set_max_tokens(state, new_max_tokens)
+        if result.get('success'):
+            _console.print(f"[green]{i18n.t('settings.updated', value=new_max_tokens)}[/green]")
+        elif result.get('error') == 'min':
+            _console.print(f"[red]{i18n.t('settings.token_min')}[/red]")
+        else:
+            _console.print(f"[red]{i18n.t('settings.token_max')}[/red]")
+        input(i18n.t("main.press_enter"))
 
     def _run_prefix():
         """修改命令前缀。"""
@@ -88,15 +55,10 @@ def settings_mode():
         if not new_prefix:
             return
 
-        if len(new_prefix) > 10:
-            new_prefix = new_prefix[:10]
-            _console.print(f"[yellow]{i18n.t('settings.prefix_truncated', prefix=new_prefix)}[/yellow]")
-
-        state.current_config['command_prefix'] = new_prefix
-        config.save_config(state.current_config)
-        cmd.save_commands()
-        log.info(f"命令前缀已更改: {current_prefix} -> {new_prefix}")
-        _console.print(f"[green]{i18n.t('settings.updated', value=new_prefix)}[/green]")
+        result = config_service.set_command_prefix(state, new_prefix)
+        if result.get('truncated'):
+            _console.print(f"[yellow]{i18n.t('settings.prefix_truncated', prefix=result['value'])}[/yellow]")
+        _console.print(f"[green]{i18n.t('settings.updated', value=result['value'])}[/green]")
         input(i18n.t("main.press_enter"))
 
     def _render():
@@ -117,7 +79,9 @@ def settings_mode():
         ]
         navigate(i18n.t("settings.title"), i18n.t("settings.subtitle"), items, _label, _on_enter,
                  f"{i18n.t('settings.enter_configure')} | {i18n.t('settings.esc_back')}")
-        _rebuild_client_and_chat()
+        # 重建实例使 max_tokens 等配置生效
+        chat_service.rebuild_chat_instance(state)
+        print("客户端已更新")
 
     from .screen_refresh import enter_screen
     enter_screen(_render,
@@ -125,26 +89,12 @@ def settings_mode():
                  command_info=f"╰─{cmd.get_command_description('set')}")
 
 
-def _apply_model_config(model_info):
-    """将模型专属配置写入 current_config 并保存。"""
-    # 自定义模型有专属的 base_url 和 api_key
-    if model_info.get("custom"):
-        if model_info.get("base_url"):
-            state.current_config["base_url"] = model_info["base_url"]
-        if model_info.get("api_key"):
-            state.current_config["api_key"] = model_info["api_key"]
-
-
 def model_settings():
     """模型设置界面（上下键导航，k/a/d 为动作键）。"""
     cmd = state.cmd
-    config = state.config
     log.info("进入模型设置")
 
-    from modules.main_server.config import (
-        get_available_models, add_custom_model, remove_custom_model,
-        get_custom_model
-    )
+    from modules.main_server.config import get_available_models
 
     def _render():
         from .key_nav import navigate
@@ -164,13 +114,9 @@ def model_settings():
             return line
 
         def _on_enter(model_info, i):
-            new_model = model_info["name"]
-            state.current_config['model'] = new_model
-            _apply_model_config(model_info)
-            config.save_config(state.current_config)
-            log.info(f"模型已切换: {new_model}")
-            _rebuild_client_and_chat()
-            _console.print(f"[green]{i18n.t('model.switched', name=new_model)}[/green]")
+            result = config_service.switch_model(state, model_info)
+            _console.print(f"[green]{i18n.t('model.switched', name=result['value'])}[/green]")
+            print("客户端已更新")
             input(i18n.t("main.press_enter"))
             return True  # 切换完成后退出模型设置
 
@@ -180,11 +126,9 @@ def model_settings():
                 _console.print()
                 new_api_key = input(i18n.t("model.input_api_key")).strip()
                 if new_api_key:
-                    state.current_config['api_key'] = new_api_key
-                    config.save_config(state.current_config)
-                    log.info("API 密钥已更新")
+                    config_service.set_api_key(state, new_api_key)
                     _console.print(f"[green]{i18n.t('model.api_key_updated')}[/green]")
-                    _rebuild_client_and_chat()
+                    print("客户端已更新")
                     input(i18n.t("main.press_enter"))
                 return True
             if key == 'a':
@@ -261,8 +205,6 @@ def _add_custom_model_flow():
 
 def _delete_custom_model_flow(model_info):
     """删除当前选中的自定义模型。"""
-    from modules.main_server.config import remove_custom_model
-
     name = model_info["name"]
     _console.print()
     _console.print(create_header_panel(i18n.t("model.delete_title"), i18n.t("model.delete_subtitle")))
@@ -270,15 +212,11 @@ def _delete_custom_model_flow(model_info):
     if confirm not in ('y', 'yes'):
         return
 
-    # 如果当前正在使用该模型，切回默认模型
-    if state.current_config.get('model') == name:
-        state.current_config['model'] = constants.DEFAULT_MODEL
-
-    success, error = remove_custom_model(name)
-    if success:
+    result = config_service.remove_custom_model(state, name)
+    if result.get('success'):
         _console.print(f"[green]{i18n.t('model.deleted', name=name)}[/green]")
     else:
-        _console.print(f"[red]{error}[/red]")
+        _console.print(f"[red]{result.get('error')}[/red]")
     input(i18n.t("main.press_enter"))
 
 
@@ -306,12 +244,8 @@ def effort_settings():
 
         def _on_enter(level, i):
             name, _ = level
-            state.effort_level = name
-            state.chat_instance.effort_level = name
-            state.current_config['effort_level'] = name
-            state.config.save_config(state.current_config)
-            log.info(f"思考深度已更改: {name}")
-            _console.print(f"[green]{i18n.t('main.effort_set', level=name)}[/green]")
+            result = config_service.set_effort_level(state, name)
+            _console.print(f"[green]{i18n.t('main.effort_set', level=result['value'])}[/green]")
             input(i18n.t("main.press_enter"))
             return True  # 应用后退出
 

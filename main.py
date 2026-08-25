@@ -56,19 +56,17 @@ def _load_commands_module():
 
 
 def _load_core_modules():
-    """加载对话、屏幕刷新、备份管理及 OpenAI 等核心重模块（进度条 50% 阶段）。"""
+    """加载对话、屏幕刷新及 OpenAI 等核心重模块（进度条 50% 阶段）。"""
     from openai import AuthenticationError, RateLimitError, APIConnectionError, APIError
     from modules.chater import chat, conversation_loader
     from modules.chater.conversation_loader import format_user_output_line
     from modules.CLIserver import screen_refresh
-    from modules.functions import backup_manager
     from modules.functions import powershell_manager
 
     state.chat = chat
     state.conversation_loader = conversation_loader
     state.format_user_output_line = format_user_output_line
     state.screen_refresh = screen_refresh
-    state.backup_manager = backup_manager
     state.AuthenticationError = AuthenticationError
     state.RateLimitError = RateLimitError
     state.APIConnectionError = APIConnectionError

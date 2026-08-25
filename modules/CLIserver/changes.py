@@ -1,4 +1,4 @@
-"""文件变更确认界面。"""
+"""文件变更确认界面（备份操作委托 core.services.backup_service）。"""
 import time
 
 from rich.console import Console
@@ -6,9 +6,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 
-from colorama import Fore, Style
-
 from modules.logger import get_logger
+from modules.core.services import backup_service
 from .state import state
 from .callback import flush_context_usage
 
@@ -90,26 +89,20 @@ def _show_operation_result(console, result, action_name):
     input("\n按 Enter 键继续...")
 
 
-def _process_changes_input(bm, console):
+def _process_changes_input(console):
     """处理用户输入。"""
     while True:
         try:
             choice = input("\n请选择操作: ").lower().strip()
 
             if choice == 'y':
-                start = time.perf_counter()
-                result = bm.apply_all_changes()
-                elapsed = time.perf_counter() - start
-                log.info(f"应用更改完成: 耗时={elapsed:.3f}s, 成功={result.get('success', False)}")
+                result = backup_service.apply_all_changes()
                 _show_operation_result(console, result, "应用")
                 break
             elif choice == 'n':
                 confirm = input("⚠️  确认撤销所有更改？此操作不可恢复 (yes/no): ").lower().strip()
                 if confirm == 'yes':
-                    start = time.perf_counter()
-                    result = bm.revert_all_changes()
-                    elapsed = time.perf_counter() - start
-                    log.info(f"撤销更改完成: 耗时={elapsed:.3f}s, 成功={result.get('success', False)}")
+                    result = backup_service.revert_all_changes()
                     _show_operation_result(console, result, "撤销")
                     break
                 else:
@@ -125,7 +118,7 @@ def _process_changes_input(bm, console):
             break
 
 
-def _show_changes_screen(bm, pending_count):
+def _show_changes_screen(pending_count, pending_list):
     """显示变更确认界面。"""
     console = Console()
 
@@ -137,7 +130,6 @@ def _show_changes_screen(bm, pending_count):
 
     last_output = _get_last_assistant_output()
 
-    pending_list = bm.get_pending_changes_list()
     table = _build_changes_table(pending_list)
 
     footer_text = Text.from_markup(
@@ -163,23 +155,22 @@ def _show_changes_screen(bm, pending_count):
     console.print(Panel(footer_text, border_style="dim"))
     console.print()
 
-    _process_changes_input(bm, console)
+    _process_changes_input(console)
 
 
 def handle_pending_changes():
     """处理待确认的文件变更。"""
-    backup_manager = state.backup_manager
     screen_refresh = state.screen_refresh
     from .header import print_header, print_conversation_history
 
-    bm = backup_manager.get_backup_manager()
-    pending_count = bm.get_pending_changes_count()
+    pending = backup_service.get_pending_changes()
+    pending_count = pending.get('count', 0)
     log.info(f"待确认文件变更数: {pending_count}")
     if pending_count == 0:
         return
 
     screen_refresh.clear_screen()
-    _show_changes_screen(bm, pending_count)
+    _show_changes_screen(pending_count, pending.get('list', []))
     screen_refresh.refresh(print_header, print_conversation_history)
 
 

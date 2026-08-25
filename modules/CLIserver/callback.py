@@ -6,6 +6,7 @@ import asyncio
 from colorama import Fore, Style
 
 from modules.bootstrap import constants
+from modules.core import events
 from modules.logger import get_logger
 from . import i18n
 from .state import ui, state
@@ -128,18 +129,18 @@ def chat_callback(event_type, data):
     cmd = state.cmd
     format_user_output_line = state.format_user_output_line
 
-    if event_type == 'thinking':
+    if event_type == events.EVENT_THINKING:
         if ui.turn_first_output:
             ui.turn_first_output = False
         if state.show_thinking:
             print(f"{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_header')}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}")
             ui._indented_after_thinking = False
-    elif event_type == 'tool_start':
+    elif event_type == events.EVENT_TOOL_START:
         clear_tool_pending()
         ui._tool_pending = True
         ui._spinner_task = asyncio.ensure_future(run_spinner(data['name']))
         log.info(f"工具开始执行: {data.get('name', 'unknown')}")
-    elif event_type == 'thinking_start':
+    elif event_type == events.EVENT_THINKING_START:
         ui._indented_after_thinking = False
         if ui.turn_first_output:
             ui.turn_first_output = False
@@ -149,19 +150,19 @@ def chat_callback(event_type, data):
             ui.thinking_start_time = time.time()
             log.debug("思考开始")
             print(f"\r\033[K{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_in_progress', elapsed=0)}{Style.RESET_ALL}", end="", flush=True)
-    elif event_type == 'thinking_chunk':
+    elif event_type == events.EVENT_THINKING_CHUNK:
         if state.show_thinking:
             print(f"{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}", end="", flush=True)
         else:
             elapsed = int(time.time() - ui.thinking_start_time)
             print(f"\r\033[K{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_in_progress', elapsed=elapsed)}{Style.RESET_ALL}", end="", flush=True)
-    elif event_type == 'thinking_end':
+    elif event_type == events.EVENT_THINKING_END:
         if not state.show_thinking:
             elapsed = int(time.time() - ui.thinking_start_time)
             log.info(f"思考完成, 耗时={elapsed}s")
             print(f"\r\033[K{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_done', elapsed=elapsed)}{Style.RESET_ALL}")
         ui._indented_after_thinking = not state.show_thinking
-    elif event_type == 'response_chunk':
+    elif event_type == events.EVENT_RESPONSE_CHUNK:
         if ui.turn_first_output:
             ui.turn_first_output = False
         content = data['content']
@@ -182,9 +183,9 @@ def chat_callback(event_type, data):
         else:
             print(content, end="", flush=True)
         ui.at_line_start = content.endswith('\n')
-    elif event_type == 'response_end':
+    elif event_type == events.EVENT_RESPONSE_END:
         ui._indented_after_thinking = False
-    elif event_type == 'tool_calls':
+    elif event_type == events.EVENT_TOOL_CALLS:
         clear_tool_pending()
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -196,18 +197,18 @@ def chat_callback(event_type, data):
             print(f"{indent}{Fore.BLUE}  - {call['name']}{Style.RESET_ALL}")
             if call.get('arguments'):
                 print(f"{indent}{Fore.BLUE}    参数: {call['arguments']}{Style.RESET_ALL}")
-    elif event_type == 'tool_result':
+    elif event_type == events.EVENT_TOOL_RESULT:
         indent = "  " if (ui._indented_after_thinking and state.show_thinking) else ""
         if data['formatted']:
             print(f"{indent}{Fore.GREEN}--结果:\n{indent}{data['formatted']}{Style.RESET_ALL}")
         else:
             print(f"{indent}{Fore.GREEN}--结果: {data['raw']}{Style.RESET_ALL}")
-    elif event_type == 'user_output':
+    elif event_type == events.EVENT_USER_OUTPUT:
         clear_tool_pending()
         line = format_user_output_line(data)
         sys.stdout.write(f"\r\033[K{line}\n")
         sys.stdout.flush()
-    elif event_type == 'user_input_required':
+    elif event_type == events.EVENT_USER_INPUT_REQUIRED:
         clear_tool_pending()
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -220,7 +221,7 @@ def chat_callback(event_type, data):
         if not user_input and data.get('default_value'):
             user_input = data.get('default_value')
         return user_input
-    elif event_type == 'confirmation_required':
+    elif event_type == events.EVENT_CONFIRMATION_REQUIRED:
         clear_tool_pending()
         sys.stdout.write("\n")
         sys.stdout.flush()
@@ -237,13 +238,13 @@ def chat_callback(event_type, data):
         if data.get('error'):
             print(f"  原因: {data.get('error')}")
         return input("\n是否确认此操作? (y/n): ").lower()
-    elif event_type == 'operation_canceled':
+    elif event_type == events.EVENT_OPERATION_CANCELED:
         log.info("操作已取消")
         print("操作已取消")
-    elif event_type == 'operation_confirmed':
+    elif event_type == events.EVENT_OPERATION_CONFIRMED:
         log.info("操作已确认，正在执行")
         print("操作已确认，正在执行...")
-    elif event_type == 'console_output':
+    elif event_type == events.EVENT_CONSOLE_OUTPUT:
         content = data.get('content', '')
         level = data.get('level', 'info')
         if level == 'error':
@@ -252,12 +253,12 @@ def chat_callback(event_type, data):
             print(f"\n{Fore.YELLOW}警告: {content}{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.GREEN}信息: {content}{Style.RESET_ALL}")
-    elif event_type == constants.EVENT_MAX_ITERATIONS_REACHED:
+    elif event_type == events.EVENT_MAX_ITERATIONS_REACHED:
         current_iterations = data.get('iterations', 0)
         hard_limit = data.get('hard_limit', 100)
         remaining = hard_limit - current_iterations
         log.warning(f"工具调用达到迭代上限: {current_iterations}/{hard_limit}")
         print(f"\n{Fore.YELLOW}工具调用已达 {current_iterations} 次 (上限 {hard_limit} 次，剩余 {remaining} 次){Style.RESET_ALL}")
         return input("是否继续对话? (y/n): ").lower()
-    elif event_type == 'context_usage':
+    elif event_type == events.EVENT_CONTEXT_USAGE:
         ui._pending_context_usage = data

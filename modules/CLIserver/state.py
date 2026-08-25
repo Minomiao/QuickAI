@@ -43,7 +43,6 @@ class AppState:
         self.conversation_loader = None
         self.format_user_output_line = None
         self.screen_refresh = None
-        self.backup_manager = None
         self.AuthenticationError = None
         self.RateLimitError = None
         self.APIConnectionError = None
