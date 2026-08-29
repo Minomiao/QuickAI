@@ -65,6 +65,7 @@ Thumbs.db
 # Web files
 web/
 main_server.py
+modules/web_server/
 
 # Test GUI/CLI entries (beta)
 main_cli.py
@@ -73,6 +74,7 @@ modules/main_server/app_engine.py
 
 # Tests
 # tests/ 已纳入版本控制，不再忽略
+tests/unit/test_web_server.py
 
 #embedding
 models/bge-small-zh-v1.5/
