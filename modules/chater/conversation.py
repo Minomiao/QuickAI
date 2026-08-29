@@ -7,9 +7,23 @@ from modules.bootstrap import constants
 
 log = get_logger("Dolphin.conversation")
 
-CONVERSATIONS_DIR = app_paths.CONVERSATIONS_DIR
-
 _FILE_AUTOCOMPLETE_TOOLS = constants.FILE_AUTOCOMPLETE_TOOLS
+
+
+def __getattr__(name):
+    """惰性解析 CONVERSATIONS_DIR（供外部属性访问）。
+
+    避免在 bootstrap.init 之前导入本模块时把 None 按值捕获进常量；
+    也兼容 unittest.mock.patch 对该属性的临时替换。
+    """
+    if name == "CONVERSATIONS_DIR":
+        return app_paths.CONVERSATIONS_DIR
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _conversations_dir():
+    """内部读取：优先取模块属性（支持测试重定向），否则取 bootstrap 当前值。"""
+    return globals().get("CONVERSATIONS_DIR") or app_paths.CONVERSATIONS_DIR
 
 
 def _is_file_tool(tool_name):
@@ -267,7 +281,7 @@ def save_conversation(messages, dir_id, conv_id):
 def _save_conversation_sync(messages, dir_id, conv_id):
     """底层同步写盘实现。"""
     start = time.perf_counter()
-    conv_base_dir = os.path.join(CONVERSATIONS_DIR, dir_id)
+    conv_base_dir = os.path.join(_conversations_dir(), dir_id)
     conv_folder = os.path.join(conv_base_dir, conv_id)
 
     # 创建会话文件夹
@@ -293,7 +307,7 @@ def load_conversation(dir_id, conv_id):
     """
     start = time.perf_counter()
     # 尝试新格式
-    new_filepath = os.path.join(CONVERSATIONS_DIR, dir_id, conv_id, f"{conv_id}.json")
+    new_filepath = os.path.join(_conversations_dir(), dir_id, conv_id, f"{conv_id}.json")
     if os.path.exists(new_filepath):
         try:
             with open(new_filepath, 'r', encoding='utf-8') as f:
@@ -312,7 +326,7 @@ def load_conversation(dir_id, conv_id):
         return messages
     
     # 尝试旧格式（兼容现有数据）
-    old_filepath = os.path.join(CONVERSATIONS_DIR, dir_id, f"{conv_id}.json")
+    old_filepath = os.path.join(_conversations_dir(), dir_id, f"{conv_id}.json")
     if os.path.exists(old_filepath):
         try:
             with open(old_filepath, 'r', encoding='utf-8') as f:

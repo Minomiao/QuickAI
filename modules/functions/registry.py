@@ -13,13 +13,26 @@ from modules import bootstrap as app_paths
 
 log = get_logger("Dolphin.backup_manager")
 
-# ===== 会话文件夹内备份 =====
-CONVERSATIONS_DIR = app_paths.CONVERSATIONS_DIR
+
+def __getattr__(name):
+    """惰性解析 CONVERSATIONS_DIR（供外部属性访问）。
+
+    避免在 bootstrap.init 之前导入本模块时把 None 按值捕获进常量；
+    也兼容 unittest.mock.patch 对该属性的临时替换。
+    """
+    if name == "CONVERSATIONS_DIR":
+        return app_paths.CONVERSATIONS_DIR
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _conversations_dir():
+    """内部读取：优先取模块属性（支持测试重定向），否则取 bootstrap 当前值。"""
+    return globals().get("CONVERSATIONS_DIR") or app_paths.CONVERSATIONS_DIR
 
 
 def _get_conv_folder(dir_id: str, conv_id: str) -> Path:
     """获取会话文件夹路径"""
-    return Path(CONVERSATIONS_DIR) / dir_id / conv_id
+    return Path(_conversations_dir()) / dir_id / conv_id
 
 
 def _get_backup_registry_path(dir_id: str, conv_id: str) -> Path:
