@@ -18,6 +18,7 @@ class UIState:
         self._pending_context_usage = None  # 暂存的 token 用量，在回显中显示
         self._indented_after_thinking = False  # 思考结束后进入缩进模式
         self.at_line_start = True  # 流式输出后光标是否位于行首（用于后续换行）
+        self.generating = False  # 是否处于生成状态（Ctrl+C 分流依据）
 
 
 class AppState:

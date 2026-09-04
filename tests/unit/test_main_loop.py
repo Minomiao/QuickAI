@@ -5,7 +5,7 @@ from unittest.mock import patch
 from modules.CLIserver import main_loop
 from modules.CLIserver.commands import get_command_keyword
 from modules.CLIserver.main_loop import _QUIT, _parse_command, _cmd_quit, _cmd_back
-from modules.CLIserver.state import state
+from modules.CLIserver.state import state, ui
 
 # 默认命令名（与 commands.py 默认表对应）
 COMMAND_NAMES = [
@@ -111,6 +111,114 @@ class TestMainLoopDispatch(unittest.IsolatedAsyncioTestCase):
                 patch("modules.CLIserver.main_loop.effort_settings") as fake:
             await main_loop.main()
         fake.assert_called_once_with()
+
+
+class TestInterruptHandling(unittest.IsolatedAsyncioTestCase):
+    """Ctrl+C 分流行为：生成中取消回提示符，空闲时直接退出。"""
+
+    def setUp(self):
+        state.current_config = {
+            "command_prefix": "/",
+            "api_key": "test-key",
+            "model": "test-model",
+        }
+        ui.generating = False
+
+    async def test_cancelled_during_generation_seals_and_continues(self):
+        """生成中 GenerationCancelled → 封口保留消息、清 spinner、无提示继续。"""
+        from modules.core import GenerationCancelled
+
+        async def fake_chat_stream(_input):
+            raise GenerationCancelled()
+
+        with patch("builtins.input", side_effect=["hello", EOFError]), \
+                patch("builtins.print") as fake_print, \
+                patch("modules.CLIserver.main_loop.clear_tool_pending") as fake_clear, \
+                patch.object(state, "chat_instance") as fake_instance:
+            fake_instance.chat_stream = fake_chat_stream
+            await main_loop.main()
+
+        fake_instance.seal_interrupted_turn.assert_called_once_with()
+        fake_clear.assert_called()
+        # 无额外提示：不打印中断文案
+        interrupted_text = main_loop.i18n.t("main.interrupted")
+        for call in fake_print.call_args_list:
+            self.assertNotIn(interrupted_text, str(call))
+        # 循环继续：后续 EOFError 正常退出，且 ui.generating 已复位
+        self.assertFalse(ui.generating)
+
+    async def test_cancelled_mid_line_writes_newline_for_blank_separator(self):
+        """行中中断：补换行收尾，使新提示符前形成一整行空行。"""
+        from modules.core import GenerationCancelled
+
+        async def fake_chat_stream(_input):
+            raise GenerationCancelled()
+
+        ui.at_line_start = False
+        try:
+            with patch("builtins.input", side_effect=["hello", EOFError]), \
+                    patch("sys.stdout.write") as fake_write, \
+                    patch.object(state, "chat_instance") as fake_instance:
+                fake_instance.chat_stream = fake_chat_stream
+                await main_loop.main()
+            fake_write.assert_any_call("\n")
+            self.assertTrue(ui.at_line_start)
+        finally:
+            ui.at_line_start = True
+
+    async def test_generating_flag_reset_on_api_error(self):
+        """API 错误路径后 generating 标志必须复位为 False。"""
+
+        class FakeAPIError(Exception):
+            pass
+
+        async def fake_chat_stream(_input):
+            raise FakeAPIError("boom")
+
+        with patch("builtins.input", side_effect=["hello", EOFError]), \
+                patch.object(state, "APIError", FakeAPIError), \
+                patch.object(state, "AuthenticationError", FakeAPIError), \
+                patch.object(state, "RateLimitError", FakeAPIError), \
+                patch.object(state, "APIConnectionError", FakeAPIError), \
+                patch("modules.CLIserver.main_loop.rollback_last_message"), \
+                patch("modules.CLIserver.main_loop.clear_tool_pending"), \
+                patch.object(state, "chat_instance") as fake_instance:
+            fake_instance.chat_stream = fake_chat_stream
+            await main_loop.main()
+
+        self.assertFalse(ui.generating)
+
+    async def test_keyboard_interrupt_at_prompt_exits(self):
+        """提示符下 KeyboardInterrupt → 打印 goodbye 并退出。"""
+        with patch("builtins.input", side_effect=[KeyboardInterrupt]), \
+                patch("builtins.print") as fake_print:
+            await main_loop.main()
+        fake_print.assert_any_call(f"\n{main_loop.i18n.t('main.goodbye')}")
+
+    def test_sigint_handler_dispatch(self):
+        """handler 分流：生成中调 request_cancel 传回后端，否则抛 KeyboardInterrupt。"""
+        # 生成中：取消消息传回后端（chat_instance.request_cancel 被调用）
+        with patch.object(state, "chat_instance") as fake_instance:
+            ui.generating = True
+            try:
+                main_loop._sigint_handler(2, None)
+                fake_instance.request_cancel.assert_called_once_with()
+            finally:
+                ui.generating = False
+
+        # 空闲：抛 KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            main_loop._sigint_handler(2, None)
+
+    def test_sigint_handler_without_chat_instance_raises(self):
+        """生成中但 chat_instance 未就绪：退化为 KeyboardInterrupt。"""
+        with patch.object(state, "chat_instance", None):
+            ui.generating = True
+            try:
+                with self.assertRaises(KeyboardInterrupt):
+                    main_loop._sigint_handler(2, None)
+            finally:
+                ui.generating = False
 
 
 if __name__ == "__main__":

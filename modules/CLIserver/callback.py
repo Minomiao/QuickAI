@@ -6,7 +6,7 @@ import asyncio
 from colorama import Fore, Style
 
 from modules.bootstrap import constants
-from modules.core import events
+from modules.core import events, GenerationCancelled
 from modules.logger import get_logger
 from . import i18n
 from .state import ui, state
@@ -25,6 +25,7 @@ async def run_spinner(prefix: str):
             indent = "  " if (ui._indented_after_thinking and state.show_thinking) else ""
             sys.stdout.write(f"\r\033[K{indent}{Fore.CYAN}[{prefix}]{Style.RESET_ALL} {frame}")
             sys.stdout.flush()
+            ui.at_line_start = False
             i += 1
             await asyncio.sleep(0.12)
     except asyncio.CancelledError:
@@ -67,8 +68,14 @@ def _get_indent_prefix():
 
 
 def rollback_last_message():
-    """API 错误后回退最后一条用户消息及其后的 assistant/tool 消息。"""
-    if not state.chat_instance or not state.chat_instance.messages:
+    """回退最后一条用户消息及其后的 assistant/tool 消息（API 错误或用户中断）。"""
+    if not state.chat_instance:
+        return
+
+    # 先丢弃流式缓冲残留，防止中断的半截回复在下一轮/退出时被恢复机制重新并入
+    state.chat_instance.discard_stream_buffer()
+
+    if not state.chat_instance.messages:
         return
 
     msgs = state.chat_instance.messages
@@ -135,6 +142,7 @@ def chat_callback(event_type, data):
         if state.show_thinking:
             print(f"{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_header')}{Style.RESET_ALL}\n{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}")
             ui._indented_after_thinking = False
+            ui.at_line_start = True
     elif event_type == events.EVENT_TOOL_START:
         clear_tool_pending()
         ui._tool_pending = True
@@ -146,21 +154,25 @@ def chat_callback(event_type, data):
             ui.turn_first_output = False
         if state.show_thinking:
             print(f"{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_header')}{Style.RESET_ALL}")
+            ui.at_line_start = True
         else:
             ui.thinking_start_time = time.time()
             log.debug("思考开始")
             print(f"\r\033[K{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_in_progress', elapsed=0)}{Style.RESET_ALL}", end="", flush=True)
+            ui.at_line_start = False
     elif event_type == events.EVENT_THINKING_CHUNK:
         if state.show_thinking:
             print(f"{Fore.LIGHTBLACK_EX}{data['content']}{Style.RESET_ALL}", end="", flush=True)
         else:
             elapsed = int(time.time() - ui.thinking_start_time)
             print(f"\r\033[K{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_in_progress', elapsed=elapsed)}{Style.RESET_ALL}", end="", flush=True)
+        ui.at_line_start = False
     elif event_type == events.EVENT_THINKING_END:
         if not state.show_thinking:
             elapsed = int(time.time() - ui.thinking_start_time)
             log.info(f"思考完成, 耗时={elapsed}s")
             print(f"\r\033[K{Fore.LIGHTBLACK_EX}╰─ {i18n.t('chat.thinking_done', elapsed=elapsed)}{Style.RESET_ALL}")
+            ui.at_line_start = True
         ui._indented_after_thinking = not state.show_thinking
     elif event_type == events.EVENT_RESPONSE_CHUNK:
         if ui.turn_first_output:
@@ -189,6 +201,7 @@ def chat_callback(event_type, data):
         clear_tool_pending()
         sys.stdout.write("\n")
         sys.stdout.flush()
+        ui.at_line_start = True
         log.info(f"工具调用列表: {[call.get('name', 'unknown') for call in data.get('calls', [])]}")
         prefix = _get_indent_prefix()
         print(f"{prefix}{Fore.BLUE}--工具调用:{Style.RESET_ALL}")
@@ -203,11 +216,13 @@ def chat_callback(event_type, data):
             print(f"{indent}{Fore.GREEN}--结果:\n{indent}{data['formatted']}{Style.RESET_ALL}")
         else:
             print(f"{indent}{Fore.GREEN}--结果: {data['raw']}{Style.RESET_ALL}")
+        ui.at_line_start = True
     elif event_type == events.EVENT_USER_OUTPUT:
         clear_tool_pending()
         line = format_user_output_line(data)
         sys.stdout.write(f"\r\033[K{line}\n")
         sys.stdout.flush()
+        ui.at_line_start = True
     elif event_type == events.EVENT_USER_INPUT_REQUIRED:
         clear_tool_pending()
         sys.stdout.write("\n")
@@ -217,7 +232,11 @@ def chat_callback(event_type, data):
         print(f"  {data.get('prompt', '请输入信息')}")
         if data.get('default_value'):
             print(f"  默认值: {data.get('default_value')}")
-        user_input = input("\n请输入: ").strip()
+        try:
+            user_input = input("\n请输入: ").strip()
+        except KeyboardInterrupt:
+            # 交互等待中中断：转为生成中断，避免退出进程留下未闭环结构
+            raise GenerationCancelled from None
         if not user_input and data.get('default_value'):
             user_input = data.get('default_value')
         return user_input
@@ -237,7 +256,10 @@ def chat_callback(event_type, data):
             print(f"  工作目录: {data.get('work_directory')}")
         if data.get('error'):
             print(f"  原因: {data.get('error')}")
-        return input("\n是否确认此操作? (y/n): ").lower()
+        try:
+            return input("\n是否确认此操作? (y/n): ").lower()
+        except KeyboardInterrupt:
+            raise GenerationCancelled from None
     elif event_type == events.EVENT_OPERATION_CANCELED:
         log.info("操作已取消")
         print("操作已取消")
@@ -259,6 +281,9 @@ def chat_callback(event_type, data):
         remaining = hard_limit - current_iterations
         log.warning(f"工具调用达到迭代上限: {current_iterations}/{hard_limit}")
         print(f"\n{Fore.YELLOW}工具调用已达 {current_iterations} 次 (上限 {hard_limit} 次，剩余 {remaining} 次){Style.RESET_ALL}")
-        return input("是否继续对话? (y/n): ").lower()
+        try:
+            return input("是否继续对话? (y/n): ").lower()
+        except KeyboardInterrupt:
+            raise GenerationCancelled from None
     elif event_type == events.EVENT_CONTEXT_USAGE:
         ui._pending_context_usage = data

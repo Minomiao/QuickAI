@@ -1,8 +1,10 @@
 """主命令循环：解析用户输入并分发到各子模块。"""
 import sys
+import signal
 
 from colorama import Fore, Style
 
+from modules.core import GenerationCancelled
 from modules.logger import get_logger
 from modules.core.services import config_service
 from . import i18n
@@ -21,6 +23,18 @@ log = get_logger("Dolphin.main_loop")
 
 # 命令处理器返回值哨兵：主循环收到后退出
 _QUIT = object()
+
+# SIGINT handler 恢复引用（退出时还原，避免污染宿主进程）
+_prev_int_handler = None
+
+
+def _sigint_handler(signum, frame):
+    """Ctrl+C 分流：生成中将取消消息传回后端，空闲时打断 input 退出。"""
+    if ui.generating and state.chat_instance is not None:
+        # 消息传回后端：由核心层主动关流、停工具、在检查点终止生成
+        state.chat_instance.request_cancel()
+    else:
+        raise KeyboardInterrupt
 
 
 def _pre_send_check():
@@ -195,59 +209,83 @@ _COMMAND_TABLE = {
 
 async def main():
     """主命令循环。"""
-    while True:
-        try:
-            ui.turn_first_output = True
-            user_input = input("\n> ").strip()
+    global _prev_int_handler
+    try:
+        # 接管 SIGINT（覆盖 powershell_manager 的 SystemExit handler）
+        _prev_int_handler = signal.signal(signal.SIGINT, _sigint_handler)
+    except ValueError:
+        # 非主线程（嵌入/测试场景）无法接管，保持默认行为
+        _prev_int_handler = None
+    try:
+        while True:
+            try:
+                ui.turn_first_output = True
+                user_input = input("\n> ").strip()
 
-            if not user_input:
-                continue
-
-            current_prefix = state.current_config.get('command_prefix', '/')
-            parsed = _parse_command(user_input, current_prefix)
-            if parsed is not None:
-                keyword, args = parsed
-                handler = _COMMAND_TABLE.get(keyword)
-                if handler is None:
-                    print(i18n.t("main.unknown_command", keyword=keyword))
+                if not user_input:
                     continue
-                if handler(args) is _QUIT:
-                    break
-                continue
 
-            # 发送消息前检查
-            missing = _pre_send_check()
-            if missing:
-                missing_text = i18n.t("main.list_separator").join(missing)
-                print(f"{Fore.RED}{i18n.t('main.missing_config', missing=missing_text, command=state.cmd.get_command('model'))}{Style.RESET_ALL}")
-                log.warning(f"发送消息前检查失败: 缺少{missing_text}")
-                continue
+                current_prefix = state.current_config.get('command_prefix', '/')
+                parsed = _parse_command(user_input, current_prefix)
+                if parsed is not None:
+                    keyword, args = parsed
+                    handler = _COMMAND_TABLE.get(keyword)
+                    if handler is None:
+                        print(i18n.t("main.unknown_command", keyword=keyword))
+                        continue
+                    if handler(args) is _QUIT:
+                        break
+                    continue
 
-            try:
-                await state.chat_instance.chat_stream(user_input)
-                handle_post_chat_changes()
-            except (state.AuthenticationError, state.RateLimitError,
-                    state.APIConnectionError, state.APIError) as e:
-                print(f"\n{Fore.RED}{i18n.t('main.api_error', error=e)}{Style.RESET_ALL}")
-                log.error(f"API 错误: {e}", exc_info=True)
-                rollback_last_message()
-                clear_tool_pending()
-            except Exception as e:
-                print(f"\n{Fore.RED}{i18n.t('main.error', error=e)}{Style.RESET_ALL}")
-                log.error(f"聊天错误: {e}", exc_info=True)
-                clear_tool_pending()
+                # 发送消息前检查
+                missing = _pre_send_check()
+                if missing:
+                    missing_text = i18n.t("main.list_separator").join(missing)
+                    print(f"{Fore.RED}{i18n.t('main.missing_config', missing=missing_text, command=state.cmd.get_command('model'))}{Style.RESET_ALL}")
+                    log.warning(f"发送消息前检查失败: 缺少{missing_text}")
+                    continue
 
-        except KeyboardInterrupt:
-            print(f"\n{Fore.YELLOW}{i18n.t('main.interrupted')}{Style.RESET_ALL}")
-            clear_tool_pending()
-            try:
-                input(i18n.t("main.press_enter"))
-            except (EOFError, KeyboardInterrupt):
+                ui.generating = True
+                try:
+                    try:
+                        await state.chat_instance.chat_stream(user_input)
+                        handle_post_chat_changes()
+                    except GenerationCancelled:
+                        # 真中断：保留已完成消息，仅补全未闭环结构，无提示
+                        state.chat_instance.seal_interrupted_turn()
+                        clear_tool_pending()
+                        # 收尾中断行：换行使循环顶部的 "\n> " 形成一整行空行分隔
+                        if not ui.at_line_start:
+                            sys.stdout.write("\n")
+                            ui.at_line_start = True
+                    except (state.AuthenticationError, state.RateLimitError,
+                            state.APIConnectionError, state.APIError) as e:
+                        print(f"\n{Fore.RED}{i18n.t('main.api_error', error=e)}{Style.RESET_ALL}")
+                        log.error(f"API 错误: {e}", exc_info=True)
+                        rollback_last_message()
+                        clear_tool_pending()
+                    except Exception as e:
+                        print(f"\n{Fore.RED}{i18n.t('main.error', error=e)}{Style.RESET_ALL}")
+                        log.error(f"聊天错误: {e}", exc_info=True)
+                        clear_tool_pending()
+                finally:
+                    ui.generating = False
+
+            except KeyboardInterrupt:
+                # 提示符下 Ctrl+C：直接退出
                 print(f"\n{i18n.t('main.goodbye')}")
                 break
-        except EOFError:
-            print(f"\n{i18n.t('main.goodbye')}")
-            break
-        except Exception as e:
-            print(f"{Fore.RED}{i18n.t('main.error', error=e)}{Style.RESET_ALL}")
-            log.error(f"主循环错误: {e}", exc_info=True)
+            except EOFError:
+                print(f"\n{i18n.t('main.goodbye')}")
+                break
+            except Exception as e:
+                print(f"{Fore.RED}{i18n.t('main.error', error=e)}{Style.RESET_ALL}")
+                log.error(f"主循环错误: {e}", exc_info=True)
+    finally:
+        # 恢复原 SIGINT handler，避免污染宿主进程（测试/Web 模式）
+        if _prev_int_handler is not None:
+            try:
+                signal.signal(signal.SIGINT, _prev_int_handler)
+            except ValueError:
+                pass
+        _prev_int_handler = None

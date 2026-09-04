@@ -14,7 +14,7 @@ from modules.loader import standard_skill_loader
 from modules.main_server.middleware import request_manager
 from modules.functions import backup_manager, powershell_manager
 from modules.bootstrap import constants
-from modules.core import events
+from modules.core import events, GenerationCancelled
 from modules.logger import get_logger, log_thinking
 
 log = get_logger("Dolphin.chat")
@@ -134,6 +134,11 @@ class DolphinChat:
         # 流式缓冲：生成中的 chunk 先落盘再显示，消息完成后并入 JSON
         self._stream_buffer_path = None
         self._stream_buffer_fh = None
+
+        # 协作式取消：UI 层通过 request_cancel() 发起，核心层在检查点主动终止
+        self._cancel_requested = False
+        self._current_stream = None
+        self._current_tool_task = None
         
         # 工具分发链: (谓词, 处理器) 对
         self._tool_dispatch = [
@@ -217,6 +222,94 @@ class DolphinChat:
             except Exception as e:
                 log.debug(f"删除流式缓冲失败: {e}")
         self._stream_buffer_path = None
+
+    def discard_stream_buffer(self):
+        """丢弃流式缓冲残留（用户主动中断本轮生成时由外部调用）。
+
+        中断回滚消息后若不清缓冲，半截回复会在下一轮开始
+        或退出时被恢复机制重新并入消息列表。
+        """
+        self._clear_stream_buffer()
+
+    def request_cancel(self):
+        """UI 层取消消息入口：请求终止当前生成。
+
+        由 SIGINT handler 等同步上下文调用，立即生效的三个动作：
+        1. 置取消标志（后续检查点抛 GenerationCancelled）；
+        2. 关闭当前流（解除同步网络读阻塞，读侧异常归一化为取消）；
+        3. 取消当前工具任务（打断子进程等待等长阻塞操作）。
+        """
+        self._cancel_requested = True
+        if self._current_stream is not None:
+            try:
+                self._current_stream.close()
+            except Exception as e:
+                log.debug(f"关闭流以取消时失败: {e}")
+        if self._current_tool_task is not None and not self._current_tool_task.done():
+            self._current_tool_task.cancel()
+
+    def _check_cancelled(self):
+        """取消检查点：若已请求取消则抛出 GenerationCancelled。"""
+        if self._cancel_requested:
+            raise GenerationCancelled()
+
+    def _close_pending_tool_calls(self) -> bool:
+        """为末尾未闭环的 assistant tool_calls 补空 tool 结果，保证结构合法。
+
+        按 tool_call_id 对账：最后一条带 tool_calls 的 assistant 消息中
+        尚无对应 tool 消息的调用，逐个补空结果（中断的工具不虚构输出）。
+
+        Returns:
+            是否发生了补全。
+        """
+        last_tool_assistant = None
+        for msg in reversed(self.messages):
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                last_tool_assistant = msg
+                break
+        if last_tool_assistant is None:
+            return False
+
+        pending_ids = {tc["id"] for tc in last_tool_assistant["tool_calls"]}
+        for msg in self.messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id") in pending_ids:
+                pending_ids.discard(msg["tool_call_id"])
+        if not pending_ids:
+            return False
+
+        for tc in last_tool_assistant["tool_calls"]:
+            if tc["id"] in pending_ids:
+                self.messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": ""
+                })
+        log.debug(f"中断封口: 补全 {len(pending_ids)} 个未闭环的 tool 结果")
+        return True
+
+    def seal_interrupted_turn(self):
+        """中断后封口当前轮：保留已完成消息，仅补全未闭环结构。
+
+        与回滚不同，中断不删除任何已发生的内容：
+        - 半截流式回复由缓冲恢复为 partial assistant 消息；
+        - 未闭环的 tool_calls 补空 tool 结果；
+        - 补全后落盘并清理缓冲。
+        """
+        self._close_pending_tool_calls()
+
+        # 流缓冲中的半截内容恢复为 partial assistant（无缓冲则原样返回）
+        if self._save_dir_id and self._save_conv_id:
+            recovered = self._recover_stream_buffer(
+                list(self.messages), self._save_dir_id, self._save_conv_id
+            )
+            if recovered is not self.messages:
+                self.messages = recovered
+
+        if self._save_dir_id and self._save_conv_id:
+            conversation.save_conversation(
+                list(self.messages), self._save_dir_id, self._save_conv_id
+            )
+        self._clear_stream_buffer()
 
     def _recover_stream_buffer(self, messages, dir_id, conv_id):
         """将崩溃/退出时遗留的流式缓冲恢复为一条部分 assistant 消息。
@@ -401,9 +494,12 @@ class DolphinChat:
                 return result
             else:
                 result = self.callback(event_type, data)
-                if event_type == events.EVENT_TOOL_START:
-                    await asyncio.sleep(0)
+                # 每个事件后让出控制权，使 Ctrl+C 的取消请求能及时注入
+                # （否则同步回调链中无挂起点，thinking/response 阶段无法取消）
+                await asyncio.sleep(0)
                 return result
+        except GenerationCancelled:
+            raise
         except Exception as e:
             log.error(f"回调函数执行失败: {e}")
             return None
@@ -566,6 +662,8 @@ class DolphinChat:
         displayed_results = []
 
         for tc in tool_calls:
+            # 工具间检查点：用户中断后不再启动后续工具
+            self._check_cancelled()
             tool_name = tc['function']['name']
             arguments_str = tc['function'].get('arguments', '{}')
 
@@ -590,7 +688,16 @@ class DolphinChat:
             display_name = _parse_display_name(tool_name, self.skill_mgr, self.plugin_loader)
             await self._call_callback(events.EVENT_TOOL_START, {'name': display_name})
 
-            result, _, skill_uo = await self._execute_tool(tool_name, arguments)
+            # 包装为任务并登记引用，使 request_cancel() 能打断工具内部的
+            # 长阻塞等待（如 PowerShell 子进程）；取消异常归一化为生成取消
+            tool_task = asyncio.ensure_future(self._execute_tool(tool_name, arguments))
+            self._current_tool_task = tool_task
+            try:
+                result, _, skill_uo = await tool_task
+            except asyncio.CancelledError:
+                raise GenerationCancelled() from None
+            finally:
+                self._current_tool_task = None
             result, skip, conf_uo = await self._process_tool_confirmation(result, tool_name, arguments)
 
             final_uo = skill_uo if skill_uo is not None else conf_uo
@@ -658,6 +765,8 @@ class DolphinChat:
             AI 最终回复文本
         """
         log.info(f"开始聊天 (非流式): 输入长度={len(user_input)}")
+        # 每轮干净起点：清除上一轮可能残留的取消请求
+        self._cancel_requested = False
         chat_start = time.perf_counter()
 
         # 先处理上一轮异常中断遗留的流式缓冲，再开始新一轮
@@ -680,6 +789,8 @@ class DolphinChat:
         tool_calls = assistant_message.tool_calls
         rounds = 0
         while tool_calls and rounds < max_tool_rounds:
+            # 工具轮间检查点：用户中断后不再发起下一轮请求
+            self._check_cancelled()
             rounds += 1
             log.info(f"检测到 {len(tool_calls)} 个工具调用 (第 {rounds} 轮)")
             tool_calls_list = [
@@ -751,6 +862,8 @@ class DolphinChat:
 
         try:
             for chunk in stream:
+                # 取消检查点：用户中断后不再消费后续 chunk
+                self._check_cancelled()
                 # 检查 usage 信息（流式响应的最后一块可能包含 usage）
                 if hasattr(chunk, 'usage') and chunk.usage:
                     last_usage = chunk.usage
@@ -805,6 +918,13 @@ class DolphinChat:
                                 tool_calls_buffer[tc.index]["function"]["name"] = tc.function.name
                             if tc.function.arguments:
                                 tool_calls_buffer[tc.index]["function"]["arguments"] += tc.function.arguments
+        except GenerationCancelled:
+            raise
+        except Exception as e:
+            # request_cancel() 关闭流后，迭代器的读异常归一化为取消语义
+            if self._cancel_requested:
+                raise GenerationCancelled() from e
+            raise
         finally:
             # 确保流式连接被释放，避免中途异常时连接泄漏
             stream.close()
@@ -821,6 +941,9 @@ class DolphinChat:
     async def chat_stream(self, user_input):
         log.info(f"开始聊天 (流式): 输入长度={len(user_input)}")
         chat_start = time.perf_counter()
+
+        # 每轮干净起点：清除上一轮可能残留的取消请求
+        self._cancel_requested = False
 
         # 先处理上一轮异常中断遗留的流式缓冲，再开始新一轮
         self._merge_stale_stream_buffer()
@@ -876,7 +999,12 @@ class DolphinChat:
     async def _call_stream_and_parse(self, kwargs: dict) -> tuple:
         """调用一次流式 API 并解析响应，返回 (full_response, full_reasoning, tool_calls_buffer, has_tool_calls, last_usage)。"""
         stream = self.client.chat.completions.create(**kwargs)
-        full_response, full_reasoning, tool_calls_buffer, has_tool_calls, last_usage = await self._process_stream(stream)
+        # 登记当前流引用，使 request_cancel() 能立即关闭以解除读阻塞
+        self._current_stream = stream
+        try:
+            full_response, full_reasoning, tool_calls_buffer, has_tool_calls, last_usage = await self._process_stream(stream)
+        finally:
+            self._current_stream = None
 
         # 保存 API 返回的精确 token 用量
         if last_usage:
@@ -889,6 +1017,8 @@ class DolphinChat:
         iteration = 1
 
         while iteration < min(max_iterations, MAX_HARD_LIMIT):
+            # 迭代间检查点：用户中断后不再发起下一轮流式请求
+            self._check_cancelled()
             iteration += 1
             log.debug(f"工具调用迭代 {iteration}/{max_iterations} (hard limit: {MAX_HARD_LIMIT})")
 
