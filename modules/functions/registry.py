@@ -102,16 +102,21 @@ def _find_file_id_by_path(registry: Dict[str, Any], file_path: str) -> Optional[
     return None
 
 
-def _find_existing_backup_in_dialog(registry: Dict[str, Any], file_path: str, dialog_id: str) -> Optional[str]:
-    """检查当前对话是否已备份过该文件"""
+def _find_pending_record(registry: Dict[str, Any], file_path: str, dialog_id: str) -> Optional[Dict[str, Any]]:
+    """查找文件在当前对话中最后一条未确认记录（含已净零的幽灵记录）。
+
+    Returns:
+        记录 dict（backup_file 可能为 None，如 create 记录）；
+        无未确认记录时返回 None。
+    """
     file_id = _find_file_id_by_path(registry, file_path)
     if not file_id:
         return None
 
-    # 检查是否有当前 dialog_id 的备份
-    file_info = registry["backups"][file_id]
-    for backup in file_info.get("backup_files", []):
+    # 从末尾向前找：折叠机制保证同对话同文件至多一条未确认记录，
+    # 取最后一条以兼容历史遗留数据
+    for backup in reversed(registry["backups"][file_id].get("backup_files", [])):
         if backup.get("dialog_id") == dialog_id and not backup.get("confirmed", False):
-            return backup.get("backup_file")
+            return backup
 
     return None

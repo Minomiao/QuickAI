@@ -151,17 +151,24 @@ class FileOperation:
             file_exists_before_write = resolved_path.exists()
             action_type = "modify" if file_exists_before_write else "create"
 
-            # 写入文件
-            with open(resolved_path, 'w', encoding=encoding, errors='ignore') as f:
-                f.write(content)
-
-            # 记录备份（如果有）
+            # 先备份改前内容再写入（快照必须反映修改前状态，撤销才有意义）
             backup_path = None
-            pending_count = 0
+            backup_mgr = None
             try:
                 backup_mgr = backup_manager.get_backup_manager()
                 if backup_mgr:
                     backup_path = backup_mgr.backup_file(str(Path(file_path)), work_directory, action=action_type)
+            except Exception as e:
+                log.warning(f"备份操作失败: {e}")
+
+            # 写入文件
+            with open(resolved_path, 'w', encoding=encoding, errors='ignore') as f:
+                f.write(content)
+
+            # 记录变更
+            pending_count = 0
+            try:
+                if backup_mgr:
                     backup_mgr.record_change(
                         action=action_type,
                         file_path=str(Path(file_path)),
@@ -169,7 +176,7 @@ class FileOperation:
                     )
                     pending_count = backup_mgr.get_pending_changes_count()
             except Exception as e:
-                log.warning(f"备份操作失败: {e}")
+                log.warning(f"记录变更失败: {e}")
             
             elapsed = time.perf_counter() - start
             log.info(f"创建文件完成: {file_path}, 耗时={elapsed:.3f}s, 大小={content_size}字节")
