@@ -30,9 +30,12 @@ class StandardSkillLoader(BaseSkillLoader):
             skills_dir = os.path.join(app_paths.PROJECT_ROOT, "stdskills")
         self.skills_dir = Path(skills_dir)
         super().__init__()
+        # 聚合视图：注册名 → {members: [子技能名], kind: "pack"/"single"}
+        # 合集仓库（同来源多成员）注册为一个工具；根目录单技能保持独立
+        self.packs: Dict[str, Dict[str, Any]] = {}
         self._load_skills()
-        log.info(f"StandardSkillLoader 初始化完成: {len(self.skills)} 个标准技能加载成功, "
-                 f"{len(self.failed_skills)} 个失败")
+        log.info(f"StandardSkillLoader 初始化完成: {len(self.skills)} 个标准技能, "
+                 f"{len(self.packs)} 个注册条目, {len(self.failed_skills)} 个失败")
         if self.failed_skills:
             log.warning(f"加载失败的标准技能: {list(self.failed_skills.keys())}")
             for skill_name, error in self.failed_skills.items():
@@ -48,6 +51,8 @@ class StandardSkillLoader(BaseSkillLoader):
         if not self.skills_dir.exists():
             log.info(f"标准技能目录不存在，创建目录: {self.skills_dir}")
             self.skills_dir.mkdir(parents=True, exist_ok=True)
+            self._build_packs()
+            self._rebuild_tool_lookup()
             return
 
         folders = [self.skills_dir] + [p for p in self.skills_dir.rglob("*") if p.is_dir()]
@@ -73,6 +78,7 @@ class StandardSkillLoader(BaseSkillLoader):
                 self.failed_skills[skill_folder.name] = error_msg
                 log.error(f"加载标准技能 {skill_folder.name} 失败: {error_msg}")
 
+        self._build_packs()
         self._rebuild_tool_lookup()
 
     def _load_skill_folder(self, skill_folder: Path):
@@ -98,10 +104,15 @@ class StandardSkillLoader(BaseSkillLoader):
             log.warning(f"标准技能 {name} 已存在（重复来源: {skill_folder}），跳过")
             return
 
+        # 来源：合集仓库取顶层文件夹名，根目录单技能取自身名
+        rel_parts = skill_folder.relative_to(self.skills_dir).parts
+        source = rel_parts[0] if len(rel_parts) > 1 else name
+
         self.skills[name] = {
             "name": name,
             "description": description,
             "folder": str(skill_folder),
+            "source": source,
             "body": body,
             "functions": {},
         }
@@ -150,59 +161,136 @@ class StandardSkillLoader(BaseSkillLoader):
 
         return frontmatter.get("name"), frontmatter.get("description"), body
 
+    def _build_packs(self):
+        """按来源聚合注册条目。
+
+        同来源成员数 > 1 的合集注册为一个 pack 工具（stdskill_<合集名>，
+        携带 skill 枚举参数）；单成员来源保持独立（stdskill_<技能名>，无参数）。
+        """
+        groups: Dict[str, List[str]] = {}
+        for name, info in self.skills.items():
+            source = info.get("source") or name
+            groups.setdefault(source, []).append(name)
+
+        packs: Dict[str, Dict[str, Any]] = {}
+        for source, members in groups.items():
+            if len(members) > 1:
+                packs[source] = {"members": sorted(members), "kind": "pack"}
+            else:
+                member = members[0]
+                packs[member] = {"members": [member], "kind": "single"}
+        self.packs = packs
+
     def _rebuild_tool_lookup(self):
-        """标准技能每个技能注册为一个无参数工具：stdskill_<skill_name>。"""
+        """标准技能按 pack 注册：stdskill_<合集名> 或 stdskill_<技能名>。"""
         self._tool_lookup = {
-            f"{self._tool_prefix()}{name}": (name, "run")
-            for name in self.skills
+            f"{self._tool_prefix()}{pack_name}": (pack_name, "run")
+            for pack_name in self.packs
         }
 
+    @staticmethod
+    def _truncate(text: str, width: int) -> str:
+        return text if len(text) <= width else text[:width] + "…"
+
+    def _pack_description(self, pack_name: str, members: List[str], max_len: int = 600) -> str:
+        """合集工具描述：子技能清单（名称 + 截断后的单行描述）。"""
+        lines = [
+            f"- {n}: {self._truncate(self.skills[n].get('description', ''), 40)}"
+            for n in members
+        ]
+        text = f"技能合集 {pack_name}，含 {len(members)} 个技能:\n" + "\n".join(lines)
+        if len(text) > max_len:
+            text = text[:max_len] + "…"
+        return text
+
     def get_all_tools(self) -> List[Dict[str, Any]]:
-        """返回标准技能的工具定义（每个技能一个工具，无参数）。"""
+        """返回标准技能的工具定义。
+
+        single：无参数工具；pack：携带 skill 枚举参数的合并工具。
+        启停为组级：合集按合集名过滤，单技能按技能名过滤。
+        """
         from modules.main_server import config
         config_section = config.load_config().get(self._config_section(), {})
 
         tools = []
-        for skill_name, skill_info in self.skills.items():
-            if not config_section.get(skill_name, True):
+        for pack_name, pack in self.packs.items():
+            if not config_section.get(pack_name, True):
                 continue
+
+            members = pack["members"]
+            if pack["kind"] == "single":
+                description = self.skills[members[0]].get("description", "")
+                parameters = {"type": "object", "properties": {}, "required": []}
+            else:
+                description = self._pack_description(pack_name, members)
+                parameters = {
+                    "type": "object",
+                    "properties": {
+                        "skill": {
+                            "type": "string",
+                            "enum": members,
+                            "description": "要执行的技能名",
+                        }
+                    },
+                    "required": ["skill"],
+                }
+
             tools.append({
                 "type": "function",
                 "function": {
-                    "name": f"{self._tool_prefix()}{skill_name}",
-                    "description": skill_info.get('description', ''),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
+                    "name": f"{self._tool_prefix()}{pack_name}",
+                    "description": description,
+                    "parameters": parameters,
                 }
             })
         return tools
 
     def get_tool_names(self) -> List[str]:
-        return [f"{self._tool_prefix()}{name}" for name in self.skills]
+        return [f"{self._tool_prefix()}{pack_name}" for pack_name in self.packs]
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
-        """调用标准技能：返回 SKILL.md 正文供模型按指令执行。"""
+        """调用标准技能：返回正文供模型按指令执行。
+
+        single 直接执行；pack 依据 skill 枚举参数选择子技能。
+        """
         log.info(f"调用标准技能: {tool_name}, 参数: {arguments}")
         resolved = self._tool_lookup.get(tool_name)
         if resolved is None:
             log.error(f"标准技能不存在或未注册: {tool_name}")
             raise ValueError(f"标准技能不存在: {tool_name}")
 
-        skill_name, _ = resolved
+        pack_name, _ = resolved
+        pack = self.packs[pack_name]
+        members = pack["members"]
+
+        if pack["kind"] == "single":
+            skill_name = members[0]
+        else:
+            skill_name = (arguments or {}).get("skill")
+            if not skill_name:
+                return {
+                    "error": "缺少 skill 参数",
+                    "available": members,
+                    "hint": "请从 available 中选择要执行的技能",
+                }
+            if skill_name not in members:
+                return {
+                    "error": f"未知的技能: {skill_name}",
+                    "available": members,
+                }
+
         skill_info = self.skills[skill_name]
+        display_name = skill_name if pack["kind"] == "single" else f"{pack_name}/{skill_name}"
 
         return {
             "success": True,
-            "skill": skill_name,
+            "skill": display_name,
             "instructions": skill_info.get("body", ""),
             "folder": skill_info.get("folder", ""),
             "hint": "请阅读 instructions 并按步骤执行；如需运行 scripts/ 下的脚本，"
                     "请使用 powershell_executor 的 run_script 工具。",
             # 用户可见输出：终端显示为 [skills]<技能名>，并跳过 --工具调用/--结果 的全文刷屏
-            "user_output": {"label": "skills", "parts": [{"text": skill_name}]},
+            "user_output": {"label": "skills", "parts": [{"text": display_name}]},
         }
 
     def list_skills(self) -> list:
@@ -210,12 +298,16 @@ class StandardSkillLoader(BaseSkillLoader):
         std_config = config.load_config().get(self._config_section(), {})
         return [
             {
-                "name": f"stdskill-{skill_name}",
-                "description": skill_info.get('description', ''),
-                "functions": [],
-                "enabled": std_config.get(skill_name, True)
+                "name": f"stdskill-{pack_name}",
+                "description": (
+                    self.skills[pack["members"][0]].get("description", "")
+                    if pack["kind"] == "single"
+                    else self._pack_description(pack_name, pack["members"])
+                ),
+                "functions": pack["members"],
+                "enabled": std_config.get(pack_name, True)
             }
-            for skill_name, skill_info in self.skills.items()
+            for pack_name, pack in self.packs.items()
         ]
 
     def toggle_skill(self, skill_name: str, enabled: bool) -> Dict[str, Any]:
@@ -225,7 +317,8 @@ class StandardSkillLoader(BaseSkillLoader):
         else:
             original_skill_name = skill_name
 
-        if original_skill_name not in self.skills:
+        # 启停为组级：键为 pack 注册名（合集名或独立技能名）
+        if original_skill_name not in self.packs:
             return {"error": f"标准技能不存在: {skill_name}"}
 
         current_config = config.load_config()

@@ -12,6 +12,17 @@ from .screen_refresh import create_header_panel, create_footer_panel
 log = get_logger("Dolphin.display")
 _console = Console()
 
+# skills 界面单条描述的最大显示宽度（超出截断，多行拍平）
+_SKILL_DESC_MAX = 60
+
+
+def _flatten_desc(text: str, width: int = _SKILL_DESC_MAX) -> str:
+    """将描述拍平为单行并按宽度截断（用于导航条目内展示）。"""
+    flat = " ".join(str(text or "").split())
+    if len(flat) > width:
+        flat = flat[:width] + "…"
+    return flat
+
 
 def show_help():
     """显示命令帮助界面。"""
@@ -100,7 +111,7 @@ def show_skills():
         def _label(skill, i):
             status = i18n.t("tools.enabled") if skill.get('enabled', True) else i18n.t("tools.disabled")
             return (f"{skill['name']}\n"
-                    f"{skill.get('description', '')}\n"
+                    f"{_flatten_desc(skill.get('description', ''))}\n"
                     f"[{status}]")
 
         def _toggle(skill, i):
