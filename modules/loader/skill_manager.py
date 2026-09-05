@@ -29,6 +29,7 @@ class SkillManager(BaseSkillLoader):
         if not self.skills_dir.exists():
             log.info(f"技能目录不存在，创建目录: {self.skills_dir}")
             self.skills_dir.mkdir(parents=True, exist_ok=True)
+            self._rebuild_tool_lookup()
             return
 
         for skill_folder in self.skills_dir.iterdir():
@@ -54,6 +55,8 @@ class SkillManager(BaseSkillLoader):
                 self.failed_skills[skill_folder.name] = error_msg
                 log.error(f"加载技能 {skill_folder.name} 失败: {error_msg}")
                 log.debug(f"错误详情:\n{traceback.format_exc()}")
+
+        self._rebuild_tool_lookup()
 
     def _load_skill_folder(self, skill_folder: Path):
         log.debug(f"加载技能文件夹: {skill_folder.name}")

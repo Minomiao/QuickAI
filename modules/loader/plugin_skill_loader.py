@@ -36,6 +36,7 @@ class PluginSkillLoader(BaseSkillLoader):
         if not self.plugins_dir.exists():
             log.info(f"插件目录不存在，创建目录: {self.plugins_dir}")
             self.plugins_dir.mkdir(parents=True, exist_ok=True)
+            self._rebuild_tool_lookup()
             return
 
         for zip_file in self.plugins_dir.iterdir():
@@ -49,6 +50,8 @@ class PluginSkillLoader(BaseSkillLoader):
                 self.failed_skills[zip_file.name] = error_msg
                 log.error(f"加载插件技能压缩包 {zip_file.name} 失败: {error_msg}")
                 log.debug(f"错误详情:\n{traceback.format_exc()}")
+
+        self._rebuild_tool_lookup()
 
     def _load_skill_from_zip(self, zip_file: Path):
         log.debug(f"加载插件技能压缩包: {zip_file.name}")
@@ -152,27 +155,6 @@ class PluginSkillLoader(BaseSkillLoader):
 
         self.skills[skill_info['name']] = skill_info
         log.info(f"插件技能加载成功: {skill_info['name']} (版本: {skill_info['version']})")
-
-    def _resolve_skill_name(self, tool_name: str) -> Optional[tuple]:
-        """从工具名解析出 (skill_name, func_name)，支持 "plugin-" 前缀。"""
-        prefix = self._tool_prefix()
-        if not tool_name.startswith(prefix):
-            return None
-
-        rest = tool_name[len(prefix):]
-        parts = rest.split("_")
-        if len(parts) < 2:
-            return None
-
-        for i in range(1, len(parts) + 1):
-            possible_skill = "_".join(parts[:i])
-            # 检查是否有 "plugin-" 前缀
-            if possible_skill.startswith("plugin-"):
-                possible_skill = possible_skill[7:]
-            if possible_skill in self.skills:
-                func_name = "_".join(parts[i:])
-                return possible_skill, func_name
-        return None
 
     def list_skills(self) -> list:
         from modules.main_server import config

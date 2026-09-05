@@ -26,6 +26,8 @@ class BaseSkillLoader:
         self.skills: Dict[str, Dict[str, Any]] = {}
         self.failed_skills: Dict[str, str] = {}
         self._current_work_dir: Optional[str] = None
+        # 完整工具名 → (skill_name, func_name)，加载时确定，调用时零歧义查表
+        self._tool_lookup: Dict[str, tuple] = {}
 
     # ===== 子类必须实现的抽象接口 =====
 
@@ -55,26 +57,27 @@ class BaseSkillLoader:
             log.warning(f"获取默认工作目录失败: {e}")
             return 'workplace'
 
-    def _resolve_skill_name(self, tool_name: str) -> Optional[tuple]:
-        """从工具名解析出 (skill_name, func_name)。
+    def _rebuild_tool_lookup(self):
+        """从已加载技能生成完整工具名 → (skill_name, func_name) 精确映射表。
 
-        工具名格式为 {prefix}{skill_name}_{func_name}，其中 skill_name 可能包含下划线。
+        加载时即确定全部注册名，调用时零歧义查表，不依赖运行时回溯；
+        注册名冲突（技能名互为前缀且函数名巧合）以先注册者为准并告警。
         """
+        lookup: Dict[str, tuple] = {}
         prefix = self._tool_prefix()
-        if not tool_name.startswith(prefix):
-            return None
-
-        rest = tool_name[len(prefix):]
-        parts = rest.split("_")
-        if len(parts) < 2:
-            return None
-
-        for i in range(1, len(parts) + 1):
-            possible_skill = "_".join(parts[:i])
-            if possible_skill in self.skills:
-                func_name = "_".join(parts[i:])
-                return possible_skill, func_name
-        return None
+        for skill_name, skill_info in self.skills.items():
+            for func_name, func_info in (skill_info.get('functions') or {}).items():
+                if 'callable' not in func_info:
+                    continue
+                tool_name = f"{prefix}{skill_name}_{func_name}"
+                if tool_name in lookup:
+                    log.warning(
+                        f"工具注册名冲突: {tool_name} 已归属技能 "
+                        f"{lookup[tool_name][0]}，忽略来自 {skill_name} 的重复注册"
+                    )
+                    continue
+                lookup[tool_name] = (skill_name, func_name)
+        self._tool_lookup = lookup
 
     def get_all_tools(self) -> List[Dict[str, Any]]:
         """返回当前启用技能的所有工具定义。"""
@@ -113,17 +116,12 @@ class BaseSkillLoader:
         return names
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
-        """调用技能工具。"""
+        """调用技能工具（按加载时确定的注册名精确查表）。"""
         log.info(f"调用技能工具: {tool_name}, 参数: {arguments}")
-        prefix = self._tool_prefix()
-        if not tool_name.startswith(prefix):
-            log.error(f"工具名称格式错误: {tool_name}")
-            raise ValueError(f"工具名称格式错误: {tool_name}")
-
-        resolved = self._resolve_skill_name(tool_name)
+        resolved = self._tool_lookup.get(tool_name)
         if resolved is None:
-            log.error(f"找不到对应的技能: {tool_name}")
-            raise ValueError(f"找不到对应的技能: {tool_name}")
+            log.error(f"工具不存在或未注册: {tool_name}")
+            raise ValueError(f"工具不存在: {tool_name}")
 
         skill_name, func_name = resolved
         skill_info = self.skills[skill_name]

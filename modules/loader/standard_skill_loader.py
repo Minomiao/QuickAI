@@ -73,6 +73,8 @@ class StandardSkillLoader(BaseSkillLoader):
                 self.failed_skills[skill_folder.name] = error_msg
                 log.error(f"加载标准技能 {skill_folder.name} 失败: {error_msg}")
 
+        self._rebuild_tool_lookup()
+
     def _load_skill_folder(self, skill_folder: Path):
         log.debug(f"加载标准技能文件夹: {skill_folder.name}")
         skill_file = self._find_definition_file(skill_folder)
@@ -148,19 +150,12 @@ class StandardSkillLoader(BaseSkillLoader):
 
         return frontmatter.get("name"), frontmatter.get("description"), body
 
-    def _resolve_skill_name(self, tool_name: str) -> Optional[tuple]:
-        """从工具名解析出 (skill_name, action)。
-
-        标准技能工具名为 stdskill_<skill_name>，技能名允许包含连字符，
-        因此直接截取前缀后的部分作为技能名，无需按 "_" 回溯匹配。
-        """
-        prefix = self._tool_prefix()
-        if not tool_name.startswith(prefix):
-            return None
-        skill_name = tool_name[len(prefix):]
-        if skill_name not in self.skills:
-            return None
-        return skill_name, "run"
+    def _rebuild_tool_lookup(self):
+        """标准技能每个技能注册为一个无参数工具：stdskill_<skill_name>。"""
+        self._tool_lookup = {
+            f"{self._tool_prefix()}{name}": (name, "run")
+            for name in self.skills
+        }
 
     def get_all_tools(self) -> List[Dict[str, Any]]:
         """返回标准技能的工具定义（每个技能一个工具，无参数）。"""
@@ -191,10 +186,10 @@ class StandardSkillLoader(BaseSkillLoader):
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """调用标准技能：返回 SKILL.md 正文供模型按指令执行。"""
         log.info(f"调用标准技能: {tool_name}, 参数: {arguments}")
-        resolved = self._resolve_skill_name(tool_name)
+        resolved = self._tool_lookup.get(tool_name)
         if resolved is None:
-            log.error(f"找不到对应的标准技能: {tool_name}")
-            raise ValueError(f"找不到对应的标准技能: {tool_name}")
+            log.error(f"标准技能不存在或未注册: {tool_name}")
+            raise ValueError(f"标准技能不存在: {tool_name}")
 
         skill_name, _ = resolved
         skill_info = self.skills[skill_name]

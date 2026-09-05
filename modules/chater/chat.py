@@ -140,12 +140,13 @@ class DolphinChat:
         self._current_stream = None
         self._current_tool_task = None
         
-        # 工具分发链: (谓词, 处理器) 对
+        # 工具分发链: (谓词, 处理器) 对 —— 前缀由各加载器在注册时拼定，
+        # 互不为前缀关系；mcp_ 为 MCP 工具统一注册前缀
         self._tool_dispatch = [
             (lambda n: n.startswith("skill_"), self.skill_mgr.call_tool),
             (lambda n: n.startswith("plugin_"), self.plugin_loader.call_tool),
             (lambda n: n.startswith("stdskill_"), self.std_loader.call_tool),
-            (lambda n: "_" in n, self.mcp_mgr.call_tool),
+            (lambda n: n.startswith("mcp_"), self.mcp_mgr.call_tool),
         ]
 
         # 确认请求分发链: (谓词, 处理器) 对

@@ -31,8 +31,8 @@ class TestStandardSkillUserOutput(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_call_tool_user_output_uses_parts(self):
-        with patch.object(self.loader, "_resolve_skill_name", return_value=("demo", None)):
-            result = asyncio.run(self.loader.call_tool("stdskill_demo", {}))
+        self.loader._rebuild_tool_lookup()
+        result = asyncio.run(self.loader.call_tool("stdskill_demo", {}))
         self.assertTrue(result["success"])
         self.assertEqual(result["user_output"]["label"], "skills")
         self.assertEqual(result["user_output"]["parts"], [{"text": "demo"}])
