@@ -9,6 +9,7 @@
 
 为避免与 modules.chater 形成循环导入，DolphinChat 在函数体内延迟导入。
 """
+from typing import Dict
 from modules.logger import get_logger
 from modules.main_server import config
 from modules.main_server.middleware import request_manager
@@ -28,14 +29,30 @@ def _headless_callback(event_type, data):
     return None
 
 
-def _tool_allowed(tool: dict, allowed: list) -> bool:
+def _tool_ids(chat) -> Dict[str, set]:
+    """构建 完整工具名 → 标识符集合（自身 + 技能名 + 函数名）。
+
+    标识符来自各加载器加载时确定的 _tool_lookup，零歧义；
+    允许列表命中其中任意一个标识符即放行该工具。
+    """
+    ids: Dict[str, set] = {}
+    for loader in (chat.skill_mgr, chat.plugin_loader, chat.std_loader):
+        for tool_name, (skill_name, func_name) in loader._tool_lookup.items():
+            entry = ids.setdefault(tool_name, {tool_name})
+            entry.add(skill_name)
+            if func_name and func_name != "run":
+                entry.add(func_name)
+    return ids
+
+
+def _tool_allowed(tool: dict, allowed: list, ids: Dict[str, set]) -> bool:
     """判断工具是否在允许列表中。
 
-    支持完整工具名匹配（如 "stdskill_git"），
-    也支持按 `_技能名`/`_函数名` 后缀匹配（如传 "file_manager" 启用该技能全部函数）。
+    命中任一标识符即放行：完整工具名（如 "stdskill_git"）、
+    所属技能名（如 "file_manager" 放行该技能全部函数）、或函数名。
     """
     name = tool.get("function", {}).get("name", "")
-    return any(name == item or name.endswith(f"_{item}") for item in allowed)
+    return bool(ids.get(name, set()) & set(allowed))
 
 
 def _build_result(chat, final_content: str) -> dict:
@@ -151,9 +168,10 @@ async def chat_ai(
         request_manager.set_ai_work_directory(saved_work_dir)
 
     chat.effort_level = effort_level
-    # 工具白名单过滤：只保留允许的工具定义
+    # 工具白名单过滤：按加载器注册名反解标识符（完整名/技能名/函数名），只保留允许的工具
     if allowed_tools is not None:
-        chat.tools = [t for t in chat.tools if _tool_allowed(t, allowed_tools)]
+        ids = _tool_ids(chat)
+        chat.tools = [t for t in chat.tools if _tool_allowed(t, allowed_tools, ids)]
         log.debug(f"工具白名单过滤后: {len(chat.tools)} 个工具")
     if work_directory:
         chat.current_work_directory = work_directory
