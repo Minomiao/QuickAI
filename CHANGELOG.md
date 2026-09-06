@@ -1,5 +1,66 @@
 # Change Log
 
+## v1.2.2 (2026-09-06)
+
+Core services layer decoupling, cooperative generation cancel, load-time tool lookup routing, standard skill packs with hot reload, and a subagent delegation skill.
+
+### Architecture: Core Services Layer
+
++ Decouple core business logic from the TUI layer (`4687698`)
+  - New `modules/core/` package with an event bus (`events.py`) and services: `chat_service`, `config_service`, `conversation_service`, `backup_service`
+  - `CLIserver` submodules delegate to services instead of embedding business logic
+  - Unit tests for the event bus and all four services
++ Fix: resolve `CONVERSATIONS_DIR` lazily to survive early imports (`435c03a`)
++ Ignore web server module locally (`23e7161`)
+
+### Interruptible Generation
+
++ Add cooperative generation cancel with true-interrupt semantics (`b792970`)
+  - Ctrl+C during generation interrupts the current turn and returns to the prompt; Ctrl+C at the prompt exits
+  - Interrupted messages are preserved; partial assistant messages get their structure completed without extra notice
+  - Blank line between interrupted output and the next prompt
+
+### Backup Management
+
++ Fold per-turn file operations into a single net backup record (`d535267`)
+  - Multiple operations on the same file within one round merge into one net record
+  - create→delete nets to no pending record; works for any number of operations
+
+### Tool Routing
+
++ Resolve skill tools via load-time lookup table (`3f738be`)
+  - Loaders build a `_tool_lookup` map (full tool name → skill name, function name) at load time
+  - Unambiguous tool resolution across skill / plugin / standard-skill / MCP loaders
+
+### Standard Skills
+
++ Merge same-source standard skills into one pack tool with skill enum (`e882845`)
+  - Multiple skills from the same source folder register as a single `stdskill_<collection>` tool with a skill enum parameter
+  - Single-skill sources still register as standalone tools; skills UI truncates long descriptions
++ Install skill collections preserving layout for pack aggregation (`5da1a0c`)
+  - Multi-skill collections install to `stdskills/<collection>/<skill>/`; single skills stay flat
++ Hot-reload standard skills after programmatic install or create (`0d712df`)
+  - `reload_skills()` rebuilds state locally and swaps atomically, keeping old state on failure
+  - Newly installed or created skills take effect on the next chat turn without restart
+
+### Subagent
+
++ Add `subagent` skill for delegating self-contained tasks to a headless child agent (`ae93ac0`)
+  - Runs via the non-interactive `chat_ai_sync` caller with an independent context
+  - Returns a trimmed conclusion and tool trace summary; whitelist limited to file tools to prevent recursion
+  - Fix: tool whitelist matching resolves full tool name / skill name / function name via `_tool_lookup` instead of suffix matching
+
+### Testing
+
++ Add unit tests for events and core services (`4687698`)
++ Add generation cancel and main loop cancel tests (`b792970`)
++ Add backup actions net-record merge tests (`d535267`)
++ Add tool lookup tests (`3f738be`)
++ Add standard skill loader, display, and stdskill helper tests (`e882845`, `5da1a0c`, `0d712df`)
++ Add subagent and ai_caller tests (`ae93ac0`)
+
+---
+
 ## v1.2.1 (2026-08-24)
 
 Standard skills (Agent Skills) system, non-interactive chat caller, 400-line module refactoring, robustness fixes, and a growing unit test suite.

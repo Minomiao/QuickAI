@@ -30,9 +30,9 @@ python main.py
 
 ## 技能与扩展
 
-**内置技能**位于 `skills/`，共 9 个：calculator、file\_reader、file\_manager、git、memory\_manager、powershell\_executor、random\_generator、stdskill\_helper、web\_search，覆盖数学计算与时间、文件搜索读写、版本控制、跨会话记忆、PowerShell 异步执行、随机数生成、标准技能管理与网络搜索。
+**内置技能**位于 `skills/`，共 10 个：calculator、file\_reader、file\_manager、git、memory\_manager、powershell\_executor、random\_generator、stdskill\_helper、subagent、web\_search，覆盖数学计算与时间、文件搜索读写、版本控制、跨会话记忆、PowerShell 异步执行、随机数生成、标准技能管理、子任务委派与网络搜索。subagent 将自包含的子任务委派给无头子代理执行，子代理拥有独立上下文，仅回传结论与工具轨迹摘要。
 
-**标准技能**位于 `stdskills/`，遵循 Agent Skills 标准的 SKILL.md / skill.yaml 格式，启动时自动注册为 `stdskill_<名称>` 工具，新技能重启后生效。stdskill\_helper 提供 `create_skill` 创建、`install_skill` 从外部合集导入、`list_skills` 列出已装技能；项目自带 skill-installer 指南技能。
+**标准技能**位于 `stdskills/`，遵循 Agent Skills 标准的 SKILL.md / skill.yaml 格式，启动时注册为 `stdskill_<名称>` 工具；同一来源的多个技能聚合为单一 `stdskill_<合集名>` 工具，由 skill 参数选择子技能。stdskill\_helper 提供 `create_skill` 创建、`install_skill` 从外部合集导入、`list_skills` 列出已装技能，安装或创建后自动热加载，下一轮对话即生效，无需重启；项目自带 skill-installer 指南技能。
 
 **插件**位于 `plugins/`，以 ZIP 包形式存放，含 manifest.json 声明技能信息，启动时自动加载。
 
