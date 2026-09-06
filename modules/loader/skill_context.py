@@ -129,6 +129,19 @@ class SkillContext:
     def backup_manager(self):
         return self._backup_manager
 
+    # ===== 标准技能热重载 =====
+    def reload_standard_skills(self) -> Dict[str, Any]:
+        """热重载 stdskills/ 标准技能（安装/创建后调用，下一轮对话生效）。
+
+        Returns:
+            reload_skills 的结果字典（success/loaded_count/...）。
+        """
+        try:
+            from modules.loader import standard_skill_loader as ssl_mod
+            return ssl_mod.get_standard_skill_loader().reload_skills()
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     # ===== PowerShell 执行 =====
     @property
     def powershell_manager(self):

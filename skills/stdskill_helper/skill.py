@@ -234,11 +234,15 @@ def create_skill(context, name: str, description: str, content: str,
         skill_file.write_text(skill_text, encoding="utf-8")
 
         context.log_info(f"创建标准技能成功: {name} -> {skill_file}")
+        reloaded = context.reload_standard_skills().get("success", False)
+        note = ("已热加载，下一轮对话即可使用，工具名为 stdskill_<技能名>" if reloaded
+                else "热加载失败，需重启 Dolphin 后生效，工具名为 stdskill_<技能名>")
         return {
             "success": True,
             "skill": name,
             "file": str(skill_file),
-            "note": "新技能需重启 Dolphin 后生效，工具名为 stdskill_<技能名>",
+            "reloaded": reloaded,
+            "note": note,
             "user_output": {"label": "skills", "parts": [{"text": f"创建技能 {name}", "style": "green"}]},
         }
     except PermissionError as e:
@@ -336,17 +340,22 @@ def install_skill(context, source: str) -> Dict[str, Any]:
 
         message = f"安装完成: 新增 {len(installed)}，跳过 {len(skipped)}，失败 {len(failed)}"
         context.log_info(message)
-        if pack_name:
-            note = (f"新技能需重启 Dolphin 后生效，合集注册为工具 stdskill_{pack_name}"
-                    f"（通过 skill 参数选择子技能）")
+        reloaded = context.reload_standard_skills().get("success", False)
+        if reloaded:
+            hint = "已热加载，下一轮对话即可使用"
         else:
-            note = "新技能需重启 Dolphin 后生效，工具名为 stdskill_<技能名>"
+            hint = "热加载失败，需重启 Dolphin 后生效"
+        if pack_name:
+            note = f"{hint}，合集注册为工具 stdskill_{pack_name}（通过 skill 参数选择子技能）"
+        else:
+            note = f"{hint}，工具名为 stdskill_<技能名>"
         return {
             "success": True,
             "installed": installed,
             "skipped": skipped,
             "failed": failed,
             "pack": pack_name,
+            "reloaded": reloaded,
             "message": message,
             "note": note,
             "user_output": {"label": "skills", "parts": [{"text": message, "style": "green"}]},

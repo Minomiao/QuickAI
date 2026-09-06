@@ -946,6 +946,9 @@ class DolphinChat:
         # 每轮干净起点：清除上一轮可能残留的取消请求
         self._cancel_requested = False
 
+        # 热加载：每轮重组工具列表，使运行期安装的标准技能下一轮即可用
+        self._update_tools()
+
         # 先处理上一轮异常中断遗留的流式缓冲，再开始新一轮
         self._merge_stale_stream_buffer()
         self.add_message("user", user_input)

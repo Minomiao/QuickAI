@@ -13,7 +13,7 @@ instructions: |
      - `description`: one sentence explaining **when to use** the skill (this is the only signal the model uses to decide whether to call it)
      - `instructions` (or `body` in SKILL.md): the guidance the model reads
   3. **Unique names**: skill names (`name`) must not repeat inside `stdskills/`; duplicates are skipped
-  4. **Activation**: the loader scans at startup; **a new skill registers as a tool (named `stdskill_<name>`) only after Dolphin restarts**
+  4. **Activation**: installed skills are hot-reloaded automatically — the new tool (named `stdskill_<skill-name>`) becomes available on the **next conversation turn**, no restart needed
   5. **Do not break others**: never modify or delete existing skills under `stdskills/`
 
   ## Option 1: Install an external skill
@@ -31,9 +31,9 @@ instructions: |
      - Parses the `name` and validates its format
      - Copies only the skill folder itself and discards repository scaffolding (`.git`, `.github`, `.claude-plugin`, README, LICENSE, etc.)
      - Skips skills whose name already exists
-  3. **Check the result**: the tool returns three lists: `installed`, `skipped`, `failed`; confirm there are no unexpected failures
+  3. **Check the result**: the tool returns three lists: `installed`, `skipped`, `failed`; confirm there are no unexpected failures. On success it hot-reloads automatically (`reloaded: true`)
   4. **Verify**: call `skill_stdskill_helper_list_skills` to confirm the skill now appears
-  5. **Tell the user**: the new skill takes effect after Dolphin restarts, as tool `stdskill_<skill-name>`
+  5. **Tell the user**: the skill is available on the next conversation turn as tool `stdskill_<skill-name>`
 
   ## Option 2: Create a new skill
 
@@ -51,7 +51,7 @@ instructions: |
      - `content`: the skill body (without frontmatter; the tool generates it). If you pass a complete definition file text it is used as-is
      - `format`: `md` to generate SKILL.md (default) or `yaml` to generate skill.yaml
      - `overwrite`: set to true only if the name already exists and the user explicitly wants to overwrite
-  4. **Tell the user**: the new skill takes effect after Dolphin restarts, as tool `stdskill_<skill-name>`
+  4. **Tell the user**: the skill is available on the next conversation turn as tool `stdskill_<skill-name>`
 
   ## How to Write a Good Skill Body (prompt quality guidelines)
 
@@ -82,10 +82,10 @@ instructions: |
 
   ## Checklist (run after install or create)
 
-  - [ ] Tool returned `success: true` with no `failed` entries
+  - [ ] Tool returned `success: true` with no `failed` entries and `reloaded: true`
   - [ ] The `installed` list contains the expected skill name (or `skipped` notes it already exists)
   - [ ] `skill_stdskill_helper_list_skills` confirms the skill is present
-  - [ ] Told the user: the new skill takes effect after Dolphin restarts, as tool `stdskill_<skill-name>`
+  - [ ] Told the user: the skill is available on the next conversation turn as tool `stdskill_<skill-name>`
 
   ## Examples
 
@@ -94,9 +94,9 @@ instructions: |
   ```
   1. Download and unpack the repo into beta/ (e.g., beta/skills-repo-main/)
   2. Call skill_stdskill_helper_install_skill(source="D:\codes\QuickAI\beta\skills-repo-main")
-  3. Returns: installed=["design-taste-frontend", "minimalist-ui"], skipped=[], failed=[]
+  3. Returns: installed=["design-taste-frontend", "minimalist-ui"], skipped=[], failed=[], reloaded=true
   4. Verify with skill_stdskill_helper_list_skills
-  5. Tell the user: restart to enable stdskill_design-taste-frontend etc.
+  5. Tell the user: available next turn as stdskill_design-taste-frontend etc.
   ```
 
   Create a "batch file rename" skill:
@@ -110,7 +110,7 @@ instructions: |
   3. Call skill_stdskill_helper_create_skill(name="file-organizer",
        description="Use when the user needs to batch-rename or organize files in a directory by rules",
        content="1. List all files in the target directory with file_manager\n2. Confirm the rename rules with the user\n3. Rename file by file, then summarize the result with the [skills] label")
-  4. Tell the user: restart to enable stdskill_file-organizer
+  4. Tell the user: available next turn as stdskill_file-organizer
   ```
 
   ## References (local only; `beta/` is not tracked)

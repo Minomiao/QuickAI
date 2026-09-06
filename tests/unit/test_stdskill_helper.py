@@ -26,7 +26,14 @@ _SKILL_MD = "---\nname: {name}\ndescription: {desc}\n---\n{body}"
 
 
 class _ContextStub:
-    """install_skill 所需的最小 context（日志直落打印）。"""
+    """install_skill 所需的最小 context（日志直落打印，记录热重载调用）。"""
+
+    def __init__(self):
+        self.reload_calls = 0
+
+    def reload_standard_skills(self):
+        self.reload_calls += 1
+        return {"success": True}
 
     def log_info(self, msg):
         print(msg)
@@ -62,12 +69,16 @@ class TestInstallSkill(unittest.TestCase):
         src = self.root / "taste-skill-main" / "skills"
         self._write_skill(src, "alpha", "alpha", "A")
         self._write_skill(src, "beta", "beta", "B")
+        ctx = _ContextStub()
 
-        result = helper.install_skill(self.ctx, str(src))
+        result = helper.install_skill(ctx, str(src))
 
         self.assertTrue(result["success"])
         self.assertEqual(result["installed"], ["alpha", "beta"])
         self.assertEqual(result["pack"], "taste-skill")
+        self.assertTrue(result["reloaded"])
+        self.assertEqual(ctx.reload_calls, 1)
+        self.assertIn("下一轮对话", result["note"])
         self.assertTrue((self.std_dir / "taste-skill" / "alpha" / "SKILL.md").exists())
         self.assertTrue((self.std_dir / "taste-skill" / "beta" / "SKILL.md").exists())
 

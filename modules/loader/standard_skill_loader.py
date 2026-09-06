@@ -48,11 +48,48 @@ class StandardSkillLoader(BaseSkillLoader):
         return "stdskills"
 
     def _load_skills(self):
+        self.skills = {}
+        self.failed_skills = {}
+        self._scan_into(self.skills, self.failed_skills)
+        self.packs = self._compute_packs(self.skills)
+        self._rebuild_tool_lookup()
+
+    def reload_skills(self) -> Dict[str, Any]:
+        """原子热重载：局部重建后一次性替换，失败时保留现有技能。
+
+        供 stdskill_helper 安装/创建标准技能后调用，使新技能
+        在下一轮对话即可用（chat_stream 每轮刷新工具列表）。
+        """
+        new_skills: Dict[str, Any] = {}
+        new_failed: Dict[str, str] = {}
+        try:
+            self._scan_into(new_skills, new_failed)
+            new_packs = self._compute_packs(new_skills)
+        except Exception as e:
+            log.error(f"标准技能热重载失败，保留现有 {len(self.skills)} 个技能: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "loaded_count": len(self.skills),
+                "failed_count": len(self.failed_skills),
+            }
+        self.skills = new_skills
+        self.failed_skills = new_failed
+        self.packs = new_packs
+        self._rebuild_tool_lookup()
+        log.info(f"标准技能热重载完成: {len(new_skills)} 个技能, {len(new_packs)} 个注册条目")
+        return {
+            "success": True,
+            "loaded_count": len(new_skills),
+            "failed_count": len(new_failed),
+            "failed_skills": list(new_failed),
+        }
+
+    def _scan_into(self, skills_out: Dict[str, Any], failed_out: Dict[str, str]):
+        """扫描 skills_dir 并把结果填充到传入字典（不触碰实例状态，供原子重载）。"""
         if not self.skills_dir.exists():
             log.info(f"标准技能目录不存在，创建目录: {self.skills_dir}")
             self.skills_dir.mkdir(parents=True, exist_ok=True)
-            self._build_packs()
-            self._rebuild_tool_lookup()
             return
 
         folders = [self.skills_dir] + [p for p in self.skills_dir.rglob("*") if p.is_dir()]
@@ -64,24 +101,21 @@ class StandardSkillLoader(BaseSkillLoader):
                     continue
 
             try:
-                self._load_skill_folder(skill_folder)
+                self._load_skill_folder(skill_folder, skills_out)
             except (FileNotFoundError, PermissionError) as e:
                 error_msg = f"文件访问错误: {str(e)}"
-                self.failed_skills[skill_folder.name] = error_msg
+                failed_out[skill_folder.name] = error_msg
                 log.error(f"加载标准技能 {skill_folder.name} 失败: {error_msg}")
             except (yaml.YAMLError, KeyError, ValueError) as e:
                 error_msg = f"定义文件解析错误: {str(e)}"
-                self.failed_skills[skill_folder.name] = error_msg
+                failed_out[skill_folder.name] = error_msg
                 log.error(f"加载标准技能 {skill_folder.name} 失败: {error_msg}")
             except Exception as e:
                 error_msg = f"{str(e)}"
-                self.failed_skills[skill_folder.name] = error_msg
+                failed_out[skill_folder.name] = error_msg
                 log.error(f"加载标准技能 {skill_folder.name} 失败: {error_msg}")
 
-        self._build_packs()
-        self._rebuild_tool_lookup()
-
-    def _load_skill_folder(self, skill_folder: Path):
+    def _load_skill_folder(self, skill_folder: Path, skills_out: Dict[str, Any]):
         log.debug(f"加载标准技能文件夹: {skill_folder.name}")
         skill_file = self._find_definition_file(skill_folder)
 
@@ -100,7 +134,7 @@ class StandardSkillLoader(BaseSkillLoader):
         if not description:
             description = f"标准技能 {name}"
 
-        if name in self.skills:
+        if name in skills_out:
             log.warning(f"标准技能 {name} 已存在（重复来源: {skill_folder}），跳过")
             return
 
@@ -108,7 +142,7 @@ class StandardSkillLoader(BaseSkillLoader):
         rel_parts = skill_folder.relative_to(self.skills_dir).parts
         source = rel_parts[0] if len(rel_parts) > 1 else name
 
-        self.skills[name] = {
+        skills_out[name] = {
             "name": name,
             "description": description,
             "folder": str(skill_folder),
@@ -162,13 +196,17 @@ class StandardSkillLoader(BaseSkillLoader):
         return frontmatter.get("name"), frontmatter.get("description"), body
 
     def _build_packs(self):
+        """按来源聚合注册条目（启动路径，结果写入 self.packs）。"""
+        self.packs = self._compute_packs(self.skills)
+
+    def _compute_packs(self, skills: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """按来源聚合注册条目。
 
         同来源成员数 > 1 的合集注册为一个 pack 工具（stdskill_<合集名>，
         携带 skill 枚举参数）；单成员来源保持独立（stdskill_<技能名>，无参数）。
         """
         groups: Dict[str, List[str]] = {}
-        for name, info in self.skills.items():
+        for name, info in skills.items():
             source = info.get("source") or name
             groups.setdefault(source, []).append(name)
 
@@ -179,7 +217,7 @@ class StandardSkillLoader(BaseSkillLoader):
             else:
                 member = members[0]
                 packs[member] = {"members": [member], "kind": "single"}
-        self.packs = packs
+        return packs
 
     def _rebuild_tool_lookup(self):
         """标准技能按 pack 注册：stdskill_<合集名> 或 stdskill_<技能名>。"""

@@ -6,6 +6,7 @@
 """
 import asyncio
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -152,6 +153,75 @@ class TestStandardSkillPacks(unittest.TestCase):
         self.assertEqual(set(entries), {"stdskill-pack", "stdskill-solo"})
         self.assertEqual(entries["stdskill-pack"]["functions"], ["a", "b"])
         self.assertTrue(entries["stdskill-pack"]["enabled"])
+
+
+class TestHotReload(unittest.TestCase):
+    """原子热重载：拾取新增技能、失败保留旧状态。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.std_dir = Path(self._tmp.name) / "stdskills"
+        self.loader = StandardSkillLoader(skills_dir=str(self.std_dir))
+        self._config_state = {"stdskills": {}}
+        patcher_load = patch("modules.main_server.config.load_config",
+                             return_value=self._config_state)
+        patcher_load.start()
+        self.addCleanup(patcher_load.stop)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_reload_picks_up_new_skill(self):
+        """安装后 reload：新技能进入 packs 与查表（热加载链路）。"""
+        self.assertEqual(self.loader.packs, {})  # 初始为空
+
+        _write_skill(self.std_dir, "late", "late", "后装技能", "LATE 正文")
+        result = self.loader.reload_skills()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["loaded_count"], 1)
+        self.assertIn("stdskill_late", self.loader._tool_lookup)
+        names = {t["function"]["name"] for t in self.loader.get_all_tools()}
+        self.assertEqual(names, {"stdskill_late"})
+
+    def test_reload_picks_up_new_collection(self):
+        """安装合集后 reload：聚合为一个 pack 工具。"""
+        _write_skill(self.std_dir, "newpack/x", "x", "X 技能", "X")
+        _write_skill(self.std_dir, "newpack/y", "y", "Y 技能", "Y")
+        self.loader.reload_skills()
+
+        self.assertEqual(self.loader.packs["newpack"]["members"], ["x", "y"])
+        tools = {t["function"]["name"] for t in self.loader.get_all_tools()}
+        self.assertEqual(tools, {"stdskill_newpack"})
+
+    def test_reload_failure_keeps_old_state(self):
+        """扫描抛异常：返回失败且现有技能原样保留。"""
+        _write_skill(self.std_dir, "keep", "keep", "保留", "K")
+        self.loader.reload_skills()
+        snapshot = dict(self.loader.skills)
+        lookup_snapshot = dict(self.loader._tool_lookup)
+
+        with patch.object(self.loader, "_scan_into", side_effect=OSError("disk gone")):
+            result = self.loader.reload_skills()
+
+        self.assertFalse(result["success"])
+        self.assertEqual(self.loader.skills, snapshot)
+        self.assertEqual(self.loader._tool_lookup, lookup_snapshot)
+        # 旧工具仍然暴露
+        names = {t["function"]["name"] for t in self.loader.get_all_tools()}
+        self.assertEqual(names, {"stdskill_keep"})
+
+    def test_reload_removes_deleted_skill(self):
+        """reload 同步删除：磁盘上移除的技能从查表与工具中消失。"""
+        _write_skill(self.std_dir, "gone", "gone", "将被删除", "G")
+        self.loader.reload_skills()
+        self.assertIn("stdskill_gone", self.loader._tool_lookup)
+
+        shutil.rmtree(self.std_dir / "gone")
+        self.loader.reload_skills()
+
+        self.assertNotIn("gone", self.loader.skills)
+        self.assertNotIn("stdskill_gone", self.loader._tool_lookup)
 
 
 if __name__ == "__main__":
