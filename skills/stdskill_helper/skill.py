@@ -249,8 +249,27 @@ def create_skill(context, name: str, description: str, content: str,
         return _err(context, f"创建标准技能失败: {e}")
 
 
+def _derive_pack_name(src: Path) -> str:
+    """多技能合集安装的 pack 名。
+
+    取来源目录名；来源为 skills/ 等通用名时取其父目录（仓库根），
+    并去除 GitHub 下载包的 -main/-master 后缀，最后清洗为合法技能名。
+    """
+    base = src.name
+    if base.lower() in ("skills", "skill", "stdskills") and src.parent != src:
+        base = src.parent.name
+    base = re.sub(r"[-_](main|master)$", "", base, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[^a-z0-9-]", "-", base.lower()).strip("-")
+    return cleaned if _valid_name(cleaned) else "collection"
+
+
 def install_skill(context, source: str) -> Dict[str, Any]:
-    """从外部路径自动安装标准技能到 stdskills/。"""
+    """从外部路径自动安装标准技能到 stdskills/。
+
+    单技能来源扁平安装为 stdskills/<技能名>/；多技能合集来源保留层级
+    安装为 stdskills/<合集名>/<技能名>/，使加载器将同来源技能
+    聚合为一个 pack 工具（stdskill_<合集名>，skill 参数选择子技能）。
+    """
     try:
         src = Path(source).resolve()
         if not src.exists():
@@ -276,6 +295,7 @@ def install_skill(context, source: str) -> Dict[str, Any]:
 
         existing = _existing_skill_names()
         installed, skipped, failed = [], [], []
+        entries = []
         for skill_file in candidate_files:
             skill_folder = skill_file.parent
             # 跳过脚手架目录（.git/.github/.claude-plugin 等）
@@ -294,7 +314,21 @@ def install_skill(context, source: str) -> Dict[str, Any]:
             if name in existing or name in installed:
                 skipped.append(name)
                 continue
-            target = skills_dir / name
+            entries.append((name, skill_folder))
+
+        # 多技能合集保留层级安装，同来源技能聚合为一个 pack 工具
+        pack_name = None
+        if len(entries) > 1:
+            pack_name = _derive_pack_name(src)
+            target_root = skills_dir / pack_name
+            if target_root.exists() and any(target_root.iterdir()):
+                return _err(context, f"合集目标目录已存在且非空: {target_root}")
+            target_root.mkdir(parents=True, exist_ok=True)
+        else:
+            target_root = skills_dir
+
+        for name, skill_folder in entries:
+            target = target_root / name
             shutil.copytree(skill_folder, target,
                             ignore=shutil.ignore_patterns(*_SCAFFOLD_DIRS, *_SCAFFOLD_FILES))
             installed.append(name)
@@ -302,13 +336,19 @@ def install_skill(context, source: str) -> Dict[str, Any]:
 
         message = f"安装完成: 新增 {len(installed)}，跳过 {len(skipped)}，失败 {len(failed)}"
         context.log_info(message)
+        if pack_name:
+            note = (f"新技能需重启 Dolphin 后生效，合集注册为工具 stdskill_{pack_name}"
+                    f"（通过 skill 参数选择子技能）")
+        else:
+            note = "新技能需重启 Dolphin 后生效，工具名为 stdskill_<技能名>"
         return {
             "success": True,
             "installed": installed,
             "skipped": skipped,
             "failed": failed,
+            "pack": pack_name,
             "message": message,
-            "note": "新技能需重启 Dolphin 后生效，工具名为 stdskill_<技能名>",
+            "note": note,
             "user_output": {"label": "skills", "parts": [{"text": message, "style": "green"}]},
         }
     except PermissionError as e:
